@@ -2316,6 +2316,43 @@ Stores errors that occurred while performing an out-of-band migration.
 
 **migration_id**: The identifier of the migration.
 
+# Table "public.outbound_webhook_event_types"
+```
+       Column        |  Type  | Collation | Nullable |                         Default                          
+---------------------+--------+-----------+----------+----------------------------------------------------------
+ id                  | bigint |           | not null | nextval('outbound_webhook_event_types_id_seq'::regclass)
+ outbound_webhook_id | bigint |           | not null | 
+ event_type          | text   |           | not null | 
+ scope               | text   |           |          | 
+Indexes:
+    "outbound_webhook_event_types_pkey" PRIMARY KEY, btree (id)
+    "outbound_webhook_event_types_event_type_idx" btree (event_type)
+Foreign-key constraints:
+    "outbound_webhook_event_types_outbound_webhook_id_fkey" FOREIGN KEY (outbound_webhook_id) REFERENCES outbound_webhooks(id) ON UPDATE CASCADE ON DELETE CASCADE
+
+```
+
+# Table "public.outbound_webhooks"
+```
+   Column   |           Type           | Collation | Nullable |                    Default                    
+------------+--------------------------+-----------+----------+-----------------------------------------------
+ id         | bigint                   |           | not null | nextval('outbound_webhooks_id_seq'::regclass)
+ created_by | integer                  |           |          | 
+ created_at | timestamp with time zone |           | not null | now()
+ updated_by | integer                  |           |          | 
+ updated_at | timestamp with time zone |           | not null | now()
+ url        | bytea                    |           | not null | 
+ secret     | bytea                    |           | not null | 
+Indexes:
+    "outbound_webhooks_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "outbound_webhooks_created_by_fkey" FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    "outbound_webhooks_updated_by_fkey" FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+Referenced by:
+    TABLE "outbound_webhook_event_types" CONSTRAINT "outbound_webhook_event_types_outbound_webhook_id_fkey" FOREIGN KEY (outbound_webhook_id) REFERENCES outbound_webhooks(id) ON UPDATE CASCADE ON DELETE CASCADE
+
+```
+
 # Table "public.phabricator_repos"
 ```
    Column   |           Type           | Collation | Nullable |                    Default                    
@@ -2962,6 +2999,8 @@ Referenced by:
     TABLE "org_invitations" CONSTRAINT "org_invitations_recipient_user_id_fkey" FOREIGN KEY (recipient_user_id) REFERENCES users(id)
     TABLE "org_invitations" CONSTRAINT "org_invitations_sender_user_id_fkey" FOREIGN KEY (sender_user_id) REFERENCES users(id)
     TABLE "org_members" CONSTRAINT "org_members_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT
+    TABLE "outbound_webhooks" CONSTRAINT "outbound_webhooks_created_by_fkey" FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    TABLE "outbound_webhooks" CONSTRAINT "outbound_webhooks_updated_by_fkey" FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
     TABLE "product_subscriptions" CONSTRAINT "product_subscriptions_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id)
     TABLE "registry_extension_releases" CONSTRAINT "registry_extension_releases_creator_user_id_fkey" FOREIGN KEY (creator_user_id) REFERENCES users(id)
     TABLE "registry_extensions" CONSTRAINT "registry_extensions_publisher_user_id_fkey" FOREIGN KEY (publisher_user_id) REFERENCES users(id)
