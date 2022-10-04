@@ -1701,6 +1701,9 @@
         "externalServiceKey": {
           "$ref": "#/definitions/EncryptionKey"
         },
+        "outboundWebhookKey": {
+          "$ref": "#/definitions/EncryptionKey"
+        },
         "userExternalAccountKey": {
           "$ref": "#/definitions/EncryptionKey"
         },
