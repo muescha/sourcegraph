@@ -2973,6 +2973,7 @@ CREATE TABLE outbound_webhooks (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_by integer,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    encryption_key_id text NOT NULL,
     url bytea NOT NULL,
     secret bytea NOT NULL
 );

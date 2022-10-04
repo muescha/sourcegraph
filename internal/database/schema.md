@@ -2334,15 +2334,16 @@ Foreign-key constraints:
 
 # Table "public.outbound_webhooks"
 ```
-   Column   |           Type           | Collation | Nullable |                    Default                    
-------------+--------------------------+-----------+----------+-----------------------------------------------
- id         | bigint                   |           | not null | nextval('outbound_webhooks_id_seq'::regclass)
- created_by | integer                  |           |          | 
- created_at | timestamp with time zone |           | not null | now()
- updated_by | integer                  |           |          | 
- updated_at | timestamp with time zone |           | not null | now()
- url        | bytea                    |           | not null | 
- secret     | bytea                    |           | not null | 
+      Column       |           Type           | Collation | Nullable |                    Default                    
+-------------------+--------------------------+-----------+----------+-----------------------------------------------
+ id                | bigint                   |           | not null | nextval('outbound_webhooks_id_seq'::regclass)
+ created_by        | integer                  |           |          | 
+ created_at        | timestamp with time zone |           | not null | now()
+ updated_by        | integer                  |           |          | 
+ updated_at        | timestamp with time zone |           | not null | now()
+ encryption_key_id | text                     |           | not null | 
+ url               | bytea                    |           | not null | 
+ secret            | bytea                    |           | not null | 
 Indexes:
     "outbound_webhooks_pkey" PRIMARY KEY, btree (id)
 Foreign-key constraints:

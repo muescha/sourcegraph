@@ -15085,6 +15085,19 @@
           "Comment": ""
         },
         {
+          "Name": "encryption_key_id",
+          "Index": 6,
+          "TypeName": "text",
+          "IsNullable": false,
+          "Default": "",
+          "CharacterMaximumLength": 0,
+          "IsIdentity": false,
+          "IdentityGeneration": "",
+          "IsGenerated": "NEVER",
+          "GenerationExpression": "",
+          "Comment": ""
+        },
+        {
           "Name": "id",
           "Index": 1,
           "TypeName": "bigint",
@@ -15099,7 +15112,7 @@
         },
         {
           "Name": "secret",
-          "Index": 7,
+          "Index": 8,
           "TypeName": "bytea",
           "IsNullable": false,
           "Default": "",
@@ -15138,7 +15151,7 @@
         },
         {
           "Name": "url",
-          "Index": 6,
+          "Index": 7,
           "TypeName": "bytea",
           "IsNullable": false,
           "Default": "",

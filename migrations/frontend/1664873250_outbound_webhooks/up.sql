@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS outbound_webhooks (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_by INTEGER NULL REFERENCES users (id) ON DELETE SET NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    encryption_key_id TEXT NOT NULL,
     url BYTEA NOT NULL,
     secret BYTEA NOT NULL
 );
