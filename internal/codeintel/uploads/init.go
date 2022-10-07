@@ -20,26 +20,29 @@ func GetService(
 	db database.DB,
 	codeIntelDB codeintelshared.CodeIntelDB,
 	gsc GitserverClient,
+	observationContext *observation.Context,
 ) *Service {
 	svc, _ := initServiceMemo.Init(serviceDependencies{
 		db,
 		codeIntelDB,
 		gsc,
+		observationContext,
 	})
 
 	return svc
 }
 
 type serviceDependencies struct {
-	db          database.DB
-	codeIntelDB codeintelshared.CodeIntelDB
-	gsc         GitserverClient
+	db                 database.DB
+	codeIntelDB        codeintelshared.CodeIntelDB
+	gsc                GitserverClient
+	observationContext *observation.Context
 }
 
 var initServiceMemo = memo.NewMemoizedConstructorWithArg(func(deps serviceDependencies) (*Service, error) {
-	store := store.New(deps.db, scopedContext("store"))
-	repoStore := backend.NewRepos(scopedContext("repos").Logger, deps.db, gitserver.NewClient(deps.db))
-	lsifStore := lsifstore.New(deps.codeIntelDB, scopedContext("lsifstore"))
+	store := store.New(deps.db, scopedContext("store", deps.observationContext))
+	repoStore := backend.NewRepos(scopedContext("repos", deps.observationContext).Logger, deps.db, gitserver.NewClient(deps.db))
+	lsifStore := lsifstore.New(deps.codeIntelDB, scopedContext("lsifstore", deps.observationContext))
 	policyMatcher := policiesEnterprise.NewMatcher(deps.gsc, policiesEnterprise.RetentionExtractor, true, false)
 	locker := locker.NewWith(deps.db, "codeintel")
 
@@ -51,13 +54,13 @@ var initServiceMemo = memo.NewMemoizedConstructorWithArg(func(deps serviceDepend
 		nil, // written in circular fashion
 		policyMatcher,
 		locker,
-		scopedContext("service"),
+		scopedContext("service", deps.observationContext),
 	)
 
-	svc.policySvc = policies.GetService(deps.db, svc, deps.gsc)
+	svc.policySvc = policies.GetService(deps.db, svc, deps.gsc, deps.observationContext)
 	return svc, nil
 })
 
-func scopedContext(component string) *observation.Context {
-	return observation.ScopedContext("codeintel", "uploads", component)
+func scopedContext(component string, parent *observation.Context) *observation.Context {
+	return observation.ScopedContext("codeintel", "uploads", component, parent)
 }

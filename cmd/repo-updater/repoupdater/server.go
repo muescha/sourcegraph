@@ -17,10 +17,12 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/batches"
 	"github.com/sourcegraph/sourcegraph/internal/codeintel"
 	stores "github.com/sourcegraph/sourcegraph/internal/codeintel/shared"
+	"github.com/sourcegraph/sourcegraph/internal/codeintel/shared/gitserver"
 	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/github"
 	"github.com/sourcegraph/sourcegraph/internal/httpcli"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/internal/repos"
 	"github.com/sourcegraph/sourcegraph/internal/repoupdater/protocol"
 	"github.com/sourcegraph/sourcegraph/internal/trace"
@@ -33,6 +35,7 @@ type Server struct {
 	repos.Store
 	*repos.Syncer
 	Logger                log.Logger
+	ObservationContext    *observation.Context
 	SourcegraphDotComMode bool
 	Scheduler             interface {
 		UpdateOnce(id api.RepoID, name api.RepoName)
@@ -199,9 +202,11 @@ func (s *Server) handleExternalServiceSync(w http.ResponseWriter, r *http.Reques
 	var genericSourcer repos.Sourcer
 	sourcerLogger := logger.Scoped("repos.Sourcer", "repositories source")
 	db := database.NewDBWith(sourcerLogger.Scoped("db", "sourcer database"), s)
-	services, err := codeintel.GetServices(codeintel.Databases{
-		DB:          db,
-		CodeIntelDB: stores.NoopDB,
+	services, err := codeintel.GetServices(codeintel.ServiceDependencies{
+		DB:                 db,
+		CodeIntelDB:        stores.NoopDB,
+		GitserverClient:    gitserver.New(db, s.ObservationContext),
+		ObservationContext: s.ObservationContext,
 	})
 	if err != nil {
 		logger.Error("failed to initialize codeintel services", log.Error(err))

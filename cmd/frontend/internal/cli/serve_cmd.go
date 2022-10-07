@@ -149,14 +149,15 @@ func Main(enterpriseSetupHook func(db database.DB, codeIntelServices codeintel.S
 	}
 	db := database.NewDB(logger, sqlDB)
 
+	observationContext := &observation.Context{
+		Logger:     logger,
+		Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
+		Registerer: prometheus.DefaultRegisterer,
+	}
+
 	if os.Getenv("SRC_DISABLE_OOBMIGRATION_VALIDATION") != "" {
 		log15.Warn("Skipping out-of-band migrations check")
 	} else {
-		observationContext := &observation.Context{
-			Logger:     logger,
-			Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
-			Registerer: prometheus.DefaultRegisterer,
-		}
 		outOfBandMigrationRunner := oobmigration.NewRunnerWithDB(db, oobmigration.RefreshInterval, observationContext)
 
 		if err := outOfBandMigrationRunner.SynchronizeMetadata(ctx); err != nil {
@@ -177,10 +178,11 @@ func Main(enterpriseSetupHook func(db database.DB, codeIntelServices codeintel.S
 	conf.MustValidateDefaults()
 	go conf.Watch(liblog.Update(conf.GetLogSinks))
 
-	codeIntelServices, err := codeintel.GetServices(codeintel.Databases{
+	codeIntelServices, err := codeintel.GetServices(codeintel.ServiceDependencies{
 		DB: db,
 		// N.B. must call after conf.Init()
-		CodeIntelDB: mustInitializeCodeIntelDB(logger),
+		CodeIntelDB:        mustInitializeCodeIntelDB(logger),
+		ObservationContext: observationContext,
 	})
 	if err != nil {
 		return err

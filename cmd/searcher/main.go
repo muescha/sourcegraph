@@ -55,12 +55,12 @@ var (
 
 const port = "3181"
 
-func frontendDB() (database.DB, error) {
+func frontendDB(observationContext *observation.Context) (database.DB, error) {
 	logger := log.Scoped("frontendDB", "")
 	dsn := conf.GetServiceConnectionValueAndRestartOnChange(func(serviceConnections conftypes.ServiceConnections) string {
 		return serviceConnections.PostgresDSN
 	})
-	sqlDB, err := connections.EnsureNewFrontendDB(dsn, "searcher", &observation.TestContext)
+	sqlDB, err := connections.EnsureNewFrontendDB(dsn, "searcher", observationContext)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func shutdownOnSignal(ctx context.Context, server *http.Server) error {
 // FD.
 func setupTmpDir() error {
 	tmpRoot := filepath.Join(cacheDir, ".searcher.tmp")
-	if err := os.MkdirAll(tmpRoot, 0755); err != nil {
+	if err := os.MkdirAll(tmpRoot, 0o755); err != nil {
 		return err
 	}
 	if !tmpfriend.IsTmpFriendDir(tmpRoot) {
@@ -146,7 +146,11 @@ func run(logger log.Logger) error {
 		Registerer: prometheus.DefaultRegisterer,
 	}
 
-	db, err := frontendDB()
+	db, err := frontendDB(&observation.Context{
+		Logger:     log.Scoped("db", "server frontend db"),
+		Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
+		Registerer: prometheus.DefaultRegisterer,
+	})
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to frontend database")
 	}

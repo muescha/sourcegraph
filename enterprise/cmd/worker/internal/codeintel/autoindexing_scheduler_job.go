@@ -10,12 +10,20 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/codeintel/autoindexing/background/scheduler"
 	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 )
 
-type autoindexingScheduler struct{}
+type autoindexingScheduler struct {
+	observationContext *observation.Context
+}
 
-func NewAutoindexingSchedulerJob() job.Job {
-	return &autoindexingScheduler{}
+func NewAutoindexingSchedulerJob(observationContext *observation.Context) job.Job {
+	return &autoindexingScheduler{observationContext: &observation.Context{
+		Logger:       log.NoOp(),
+		Tracer:       observationContext.Tracer,
+		Registerer:   observationContext.Registerer,
+		HoneyDataset: observationContext.HoneyDataset,
+	}}
 }
 
 func (j *autoindexingScheduler) Description() string {
@@ -29,7 +37,7 @@ func (j *autoindexingScheduler) Config() []env.Config {
 }
 
 func (j *autoindexingScheduler) Routines(startupCtx context.Context, logger log.Logger) ([]goroutine.BackgroundRoutine, error) {
-	services, err := codeintel.InitServices()
+	services, err := codeintel.InitServices(j.observationContext)
 	if err != nil {
 		return nil, err
 	}

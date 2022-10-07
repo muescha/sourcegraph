@@ -4,6 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+
 	"github.com/sourcegraph/sourcegraph/enterprise/cmd/worker/internal/telemetry"
 
 	"github.com/sourcegraph/log"
@@ -24,8 +27,10 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/versions"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration"
 	"github.com/sourcegraph/sourcegraph/internal/repos"
+	"github.com/sourcegraph/sourcegraph/internal/trace"
 	"github.com/sourcegraph/sourcegraph/internal/version"
 )
 
@@ -38,38 +43,44 @@ func main() {
 
 	logger := log.Scoped("worker", "worker enterprise edition")
 
-	go setAuthzProviders(logger)
+	observationContext := &observation.Context{
+		Logger:     logger,
+		Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
+		Registerer: prometheus.DefaultRegisterer,
+	}
+
+	go setAuthzProviders(logger, observationContext)
 
 	additionalJobs := map[string]job.Job{
-		"codehost-version-syncing":      versions.NewSyncingJob(),
-		"insights-job":                  workerinsights.NewInsightsJob(),
-		"insights-query-runner-job":     workerinsights.NewInsightsQueryRunnerJob(),
+		"codehost-version-syncing":      versions.NewSyncingJob(observationContext),
+		"insights-job":                  workerinsights.NewInsightsJob(observationContext),
+		"insights-query-runner-job":     workerinsights.NewInsightsQueryRunnerJob(observationContext),
 		"batches-janitor":               batches.NewJanitorJob(),
 		"batches-scheduler":             batches.NewSchedulerJob(),
 		"batches-reconciler":            batches.NewReconcilerJob(),
 		"batches-bulk-processor":        batches.NewBulkOperationProcessorJob(),
 		"batches-workspace-resolver":    batches.NewWorkspaceResolverJob(),
-		"executors-janitor":             executors.NewJanitorJob(),
+		"executors-janitor":             executors.NewJanitorJob(observationContext),
 		"executors-metricsserver":       executors.NewMetricsServerJob(),
-		"codemonitors-job":              codemonitors.NewCodeMonitorJob(),
-		"bitbucket-project-permissions": permissions.NewBitbucketProjectPermissionsJob(),
-		"export-usage-telemetry":        telemetry.NewTelemetryJob(),
-		"webhook-build-job":             repos.NewWebhookBuildJob(),
+		"codemonitors-job":              codemonitors.NewCodeMonitorJob(observationContext),
+		"bitbucket-project-permissions": permissions.NewBitbucketProjectPermissionsJob(observationContext),
+		"export-usage-telemetry":        telemetry.NewTelemetryJob(observationContext),
+		"webhook-build-job":             repos.NewWebhookBuildJob(observationContext),
 
-		"codeintel-upload-janitor":                    codeintel.NewUploadJanitorJob(),
-		"codeintel-upload-expirer":                    codeintel.NewUploadExpirerJob(),
-		"codeintel-commitgraph-updater":               codeintel.NewCommitGraphUpdaterJob(),
-		"codeintel-upload-backfiller":                 codeintel.NewUploadBackfillerJob(),
-		"codeintel-autoindexing-scheduler":            codeintel.NewAutoindexingSchedulerJob(),
-		"codeintel-autoindexing-dependency-scheduler": codeintel.NewAutoindexingDependencySchedulerJob(),
-		"codeintel-autoindexing-janitor":              codeintel.NewAutoindexingJanitorJob(),
-		"codeintel-metrics-reporter":                  codeintel.NewMetricsReporterJob(),
+		"codeintel-upload-janitor":                    codeintel.NewUploadJanitorJob(observationContext),
+		"codeintel-upload-expirer":                    codeintel.NewUploadExpirerJob(observationContext),
+		"codeintel-commitgraph-updater":               codeintel.NewCommitGraphUpdaterJob(observationContext),
+		"codeintel-upload-backfiller":                 codeintel.NewUploadBackfillerJob(observationContext),
+		"codeintel-autoindexing-scheduler":            codeintel.NewAutoindexingSchedulerJob(observationContext),
+		"codeintel-autoindexing-dependency-scheduler": codeintel.NewAutoindexingDependencySchedulerJob(observationContext),
+		"codeintel-autoindexing-janitor":              codeintel.NewAutoindexingJanitorJob(observationContext),
+		"codeintel-metrics-reporter":                  codeintel.NewMetricsReporterJob(observationContext),
 
 		// Note: experimental (not documented)
-		"codeintel-ranking-indexer": codeintel.NewRankingIndexerJob(),
+		"codeintel-ranking-indexer": codeintel.NewRankingIndexerJob(observationContext),
 	}
 
-	if err := shared.Start(logger, additionalJobs, migrations.RegisterEnterpriseMigrators); err != nil {
+	if err := shared.Start(additionalJobs, migrations.RegisterEnterpriseMigrators, logger, observationContext); err != nil {
 		logger.Fatal(err.Error())
 	}
 }
@@ -83,8 +94,8 @@ func init() {
 // current actor stored in an operation's context, which is likely an internal actor for many of
 // the jobs configured in this service. This also enables repository update operations to fetch
 // permissions from code hosts.
-func setAuthzProviders(logger log.Logger) {
-	db, err := workerdb.InitDBWithLogger(logger)
+func setAuthzProviders(logger log.Logger, observationContext *observation.Context) {
+	db, err := workerdb.InitDBWithLogger(logger, observationContext)
 	if err != nil {
 		return
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/authz"
 	"github.com/sourcegraph/sourcegraph/internal/codeintel"
 	codeintelshared "github.com/sourcegraph/sourcegraph/internal/codeintel/shared"
+	"github.com/sourcegraph/sourcegraph/internal/codeintel/shared/gitserver"
 	"github.com/sourcegraph/sourcegraph/internal/codeintel/shared/lsifuploadstore"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/conf/conftypes"
@@ -66,11 +67,11 @@ func main() {
 
 	// Initialize tracing/metrics
 	observationContext := &observation.Context{
-		Logger:     log.Scoped("worker", "the precise codeintel worker"),
+		Logger:     log.NoOp(),
 		Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
 		Registerer: prometheus.DefaultRegisterer,
 		HoneyDataset: &honey.Dataset{
-			Name: "codeintel-worker",
+			Name: "codeintel-worker-noah",
 		},
 	}
 
@@ -83,8 +84,8 @@ func main() {
 	}
 
 	// Connect to databases
-	db := database.NewDB(logger, mustInitializeDB())
-	codeIntelDB := mustInitializeCodeIntelDB()
+	db := database.NewDB(logger, mustInitializeDB(observationContext))
+	codeIntelDB := mustInitializeCodeIntelDB(observationContext)
 
 	// Migrations may take a while, but after they're done we'll immediately
 	// spin up a server and can accept traffic. Inform external clients we'll
@@ -98,9 +99,11 @@ func main() {
 		logger.Fatal("Failed to create sub-repo client", log.Error(err))
 	}
 
-	services, err := codeintel.GetServices(codeintel.Databases{
-		DB:          db,
-		CodeIntelDB: codeIntelDB,
+	services, err := codeintel.GetServices(codeintel.ServiceDependencies{
+		DB:                 db,
+		CodeIntelDB:        codeIntelDB,
+		GitserverClient:    gitserver.New(db, observationContext),
+		ObservationContext: observationContext,
 	})
 	if err != nil {
 		logger.Fatal("Failed to create codeintel services", log.Error(err))
@@ -135,12 +138,12 @@ func main() {
 	goroutine.MonitorBackgroundRoutines(context.Background(), worker, server)
 }
 
-func mustInitializeDB() *sql.DB {
+func mustInitializeDB(observationContext *observation.Context) *sql.DB {
 	dsn := conf.GetServiceConnectionValueAndRestartOnChange(func(serviceConnections conftypes.ServiceConnections) string {
 		return serviceConnections.PostgresDSN
 	})
 	logger := log.Scoped("init db", "Initialize fontend database")
-	sqlDB, err := connections.EnsureNewFrontendDB(dsn, "precise-code-intel-worker", &observation.TestContext)
+	sqlDB, err := connections.EnsureNewFrontendDB(dsn, "precise-code-intel-worker", observationContext)
 	if err != nil {
 		logger.Fatal("Failed to connect to frontend database", log.Error(err))
 	}
@@ -163,26 +166,17 @@ func mustInitializeDB() *sql.DB {
 	return sqlDB
 }
 
-func mustInitializeCodeIntelDB() codeintelshared.CodeIntelDB {
+func mustInitializeCodeIntelDB(observationContext *observation.Context) codeintelshared.CodeIntelDB {
 	dsn := conf.GetServiceConnectionValueAndRestartOnChange(func(serviceConnections conftypes.ServiceConnections) string {
 		return serviceConnections.CodeIntelPostgresDSN
 	})
 	logger := log.Scoped("init db", "Initialize codeintel database.")
-	db, err := connections.EnsureNewCodeIntelDB(dsn, "precise-code-intel-worker", &observation.TestContext)
+	db, err := connections.EnsureNewCodeIntelDB(dsn, "precise-code-intel-worker", observationContext)
 	if err != nil {
 		logger.Fatal("Failed to connect to codeintel database", log.Error(err))
 	}
 
 	return codeintelshared.NewCodeIntelDB(db)
-}
-
-func makeObservationContext(observationContext *observation.Context, withHoney bool) *observation.Context {
-	if withHoney {
-		return observationContext
-	}
-	ctx := *observationContext
-	ctx.HoneyDataset = nil
-	return &ctx
 }
 
 func initializeUploadStore(ctx context.Context, uploadStore uploadstore.Store) error {

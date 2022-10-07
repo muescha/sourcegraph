@@ -29,10 +29,11 @@ type Client struct {
 }
 
 func New(db database.DB, observationContext *observation.Context) *Client {
+	operations, _ := newOperations.Init(observationContext)
 	return &Client{
 		gitserverClient: gitserver.NewClient(db),
 		dbStore:         newWithDB(db),
-		operations:      newOperations(observationContext),
+		operations:      operations,
 	}
 }
 

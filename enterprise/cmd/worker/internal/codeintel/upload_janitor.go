@@ -10,12 +10,20 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/codeintel/uploads/background/cleanup"
 	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 )
 
-type uploadJanitorJob struct{}
+type uploadJanitorJob struct {
+	observationContext *observation.Context
+}
 
-func NewUploadJanitorJob() job.Job {
-	return &uploadJanitorJob{}
+func NewUploadJanitorJob(observationContext *observation.Context) job.Job {
+	return &uploadJanitorJob{observationContext: &observation.Context{
+		Logger:       log.NoOp(),
+		Tracer:       observationContext.Tracer,
+		Registerer:   observationContext.Registerer,
+		HoneyDataset: observationContext.HoneyDataset,
+	}}
 }
 
 func (j *uploadJanitorJob) Description() string {
@@ -29,7 +37,7 @@ func (j *uploadJanitorJob) Config() []env.Config {
 }
 
 func (j *uploadJanitorJob) Routines(startupCtx context.Context, logger log.Logger) ([]goroutine.BackgroundRoutine, error) {
-	services, err := codeintel.InitServices()
+	services, err := codeintel.InitServices(j.observationContext)
 	if err != nil {
 		return nil, err
 	}

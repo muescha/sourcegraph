@@ -16,37 +16,40 @@ func GetService(
 	codeIntelDB codeintelshared.CodeIntelDB,
 	uploadSvc UploadService,
 	gitserver GitserverClient,
+	observationContext *observation.Context,
 ) *Service {
 	svc, _ := initServiceMemo.Init(serviceDependencies{
 		db,
 		codeIntelDB,
 		uploadSvc,
 		gitserver,
+		observationContext,
 	})
 
 	return svc
 }
 
 type serviceDependencies struct {
-	db          database.DB
-	codeIntelDB codeintelshared.CodeIntelDB
-	uploadSvc   UploadService
-	gitserver   GitserverClient
+	db                 database.DB
+	codeIntelDB        codeintelshared.CodeIntelDB
+	uploadSvc          UploadService
+	gitserver          GitserverClient
+	observationContext *observation.Context
 }
 
 var initServiceMemo = memo.NewMemoizedConstructorWithArg(func(deps serviceDependencies) (*Service, error) {
-	store := store.New(deps.db, scopedContext("store"))
-	lsifStore := lsifstore.New(deps.codeIntelDB, scopedContext("lsifstore"))
+	store := store.New(deps.db, scopedContext("store", deps.observationContext))
+	lsifStore := lsifstore.New(deps.codeIntelDB, scopedContext("lsifstore", deps.observationContext))
 
 	return newService(
 		store,
 		lsifStore,
 		deps.uploadSvc,
 		deps.gitserver,
-		scopedContext("service"),
+		scopedContext("service", deps.observationContext),
 	), nil
 })
 
-func scopedContext(component string) *observation.Context {
-	return observation.ScopedContext("codeintel", "codenav", component)
+func scopedContext(component string, parent *observation.Context) *observation.Context {
+	return observation.ScopedContext("codeintel", "codenav", component, parent)
 }

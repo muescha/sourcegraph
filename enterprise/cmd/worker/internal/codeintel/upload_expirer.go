@@ -11,12 +11,20 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/codeintel/uploads/background/expiration"
 	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 )
 
-type uploadExpirerJob struct{}
+type uploadExpirerJob struct {
+	observationContext *observation.Context
+}
 
-func NewUploadExpirerJob() job.Job {
-	return &uploadExpirerJob{}
+func NewUploadExpirerJob(observationContext *observation.Context) job.Job {
+	return &uploadExpirerJob{observationContext: &observation.Context{
+		Logger:       log.NoOp(),
+		Tracer:       observationContext.Tracer,
+		Registerer:   observationContext.Registerer,
+		HoneyDataset: observationContext.HoneyDataset,
+	}}
 }
 
 func (j *uploadExpirerJob) Description() string {
@@ -30,7 +38,7 @@ func (j *uploadExpirerJob) Config() []env.Config {
 }
 
 func (j *uploadExpirerJob) Routines(startupCtx context.Context, logger log.Logger) ([]goroutine.BackgroundRoutine, error) {
-	services, err := codeintel.InitServices()
+	services, err := codeintel.InitServices(j.observationContext)
 	if err != nil {
 		return nil, err
 	}

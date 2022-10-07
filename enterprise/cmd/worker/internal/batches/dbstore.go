@@ -27,7 +27,7 @@ var initStore = memo.NewMemoizedConstructor(func() (*store.Store, error) {
 		Registerer: prometheus.DefaultRegisterer,
 	}
 
-	db, err := workerdb.InitDBWithLogger(logger)
+	db, err := workerdb.InitDBWithLogger(logger, observationContext)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ var initReconcilerWorkerStore = memo.NewMemoizedConstructor(func() (dbworkerstor
 		Registerer: prometheus.DefaultRegisterer,
 	}
 
-	db, err := workerdb.InitDBWithLogger(observationContext.Logger)
+	db, err := workerdb.InitDBWithLogger(observationContext.Logger, observationContext)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ var initBulkOperationWorkerStore = memo.NewMemoizedConstructor(func() (dbworkers
 		Registerer: prometheus.DefaultRegisterer,
 	}
 
-	db, err := workerdb.InitDBWithLogger(observationContext.Logger)
+	db, err := workerdb.InitDBWithLogger(observationContext.Logger, observationContext)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ var initBatchSpecWorkspaceExecutionWorkerStore = memo.NewMemoizedConstructor(fun
 		Registerer: prometheus.DefaultRegisterer,
 	}
 
-	db, err := workerdb.InitDBWithLogger(observationContext.Logger)
+	db, err := workerdb.InitDBWithLogger(observationContext.Logger, observationContext)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ var initBatchSpecResolutionWorkerStore = memo.NewMemoizedConstructor(func() (dbw
 		Registerer: prometheus.DefaultRegisterer,
 	}
 
-	db, err := workerdb.InitDBWithLogger(observationContext.Logger)
+	db, err := workerdb.InitDBWithLogger(observationContext.Logger, observationContext)
 	if err != nil {
 		return nil, err
 	}

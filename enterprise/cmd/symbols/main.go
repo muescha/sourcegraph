@@ -96,7 +96,7 @@ func SetupRockskip(observationContext *observation.Context, gitserverClient symb
 		logger.Fatal("failed to load configuration", log.Error(err))
 	}
 
-	codeintelDB := mustInitializeCodeIntelDB(logger)
+	codeintelDB := mustInitializeCodeIntelDB(logger, observationContext)
 	createParser := func() (ctags.Parser, error) {
 		return symbolsParser.SpawnCtags(log.Scoped("parser", "ctags parser"), config.Ctags)
 	}
@@ -132,7 +132,7 @@ func LoadRockskipConfig(baseConfig env.BaseConfig) RockskipConfig {
 	}
 }
 
-func mustInitializeCodeIntelDB(logger log.Logger) *sql.DB {
+func mustInitializeCodeIntelDB(logger log.Logger, observationContext *observation.Context) *sql.DB {
 	dsn := conf.GetServiceConnectionValueAndRestartOnChange(func(serviceConnections conftypes.ServiceConnections) string {
 		return serviceConnections.CodeIntelPostgresDSN
 	})
@@ -140,7 +140,7 @@ func mustInitializeCodeIntelDB(logger log.Logger) *sql.DB {
 		db  *sql.DB
 		err error
 	)
-	db, err = connections.EnsureNewCodeIntelDB(dsn, "symbols", &observation.TestContext)
+	db, err = connections.EnsureNewCodeIntelDB(dsn, "symbols", observationContext)
 	if err != nil {
 		logger.Fatal("failed to connect to codeintel database", log.Error(err))
 	}

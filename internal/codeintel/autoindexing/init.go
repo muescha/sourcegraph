@@ -21,6 +21,7 @@ func GetService(
 	depsSvc DependenciesService,
 	policiesSvc PoliciesService,
 	gitserver shared.GitserverClient,
+	observationContext *observation.Context,
 ) *Service {
 	svc, _ := initServiceMemo.Init(serviceDependencies{
 		db,
@@ -28,21 +29,23 @@ func GetService(
 		depsSvc,
 		policiesSvc,
 		gitserver,
+		observationContext,
 	})
 
 	return svc
 }
 
 type serviceDependencies struct {
-	db          database.DB
-	uploadSvc   shared.UploadService
-	depsSvc     DependenciesService
-	policiesSvc PoliciesService
-	gitserver   shared.GitserverClient
+	db                 database.DB
+	uploadSvc          shared.UploadService
+	depsSvc            DependenciesService
+	policiesSvc        PoliciesService
+	gitserver          shared.GitserverClient
+	observationContext *observation.Context
 }
 
 var initServiceMemo = memo.NewMemoizedConstructorWithArg(func(deps serviceDependencies) (*Service, error) {
-	store := store.New(deps.db, scopedContext("store"))
+	store := store.New(deps.db, scopedContext("store", deps.observationContext))
 	repoStore := deps.db.Repos()
 	gitserverRepoStore := deps.db.GitserverRepos()
 	externalServiceStore := deps.db.ExternalServices()
@@ -64,10 +67,10 @@ var initServiceMemo = memo.NewMemoizedConstructorWithArg(func(deps serviceDepend
 		symbolsClient,
 		repoUpdater,
 		inferenceSvc,
-		scopedContext("service"),
+		scopedContext("service", deps.observationContext),
 	), nil
 })
 
-func scopedContext(component string) *observation.Context {
-	return observation.ScopedContext("codeintel", "autoindexing", component)
+func scopedContext(component string, parent *observation.Context) *observation.Context {
+	return observation.ScopedContext("codeintel", "autoindexing", component, parent)
 }

@@ -44,12 +44,19 @@ import (
 
 // bitbucketProjectPermissionsJob implements the job.Job interface. It is used by the worker service
 // to spawn a new background worker.
-type bitbucketProjectPermissionsJob struct{}
+type bitbucketProjectPermissionsJob struct {
+	observationContext *observation.Context
+}
 
 // NewBitbucketProjectPermissionsJob creates a new job for applying explicit permissions
 // to all the repositories of a Bitbucket Project.
-func NewBitbucketProjectPermissionsJob() job.Job {
-	return &bitbucketProjectPermissionsJob{}
+func NewBitbucketProjectPermissionsJob(observationContext *observation.Context) job.Job {
+	return &bitbucketProjectPermissionsJob{observationContext: &observation.Context{
+		Logger:       log.NoOp(),
+		Tracer:       observationContext.Tracer,
+		Registerer:   observationContext.Registerer,
+		HoneyDataset: observationContext.HoneyDataset,
+	}}
 }
 
 func (j *bitbucketProjectPermissionsJob) Description() string {
@@ -63,7 +70,7 @@ func (j *bitbucketProjectPermissionsJob) Config() []env.Config {
 // Routines is called by the worker service to start the worker.
 // It returns a list of goroutines that the worker service should start and manage.
 func (j *bitbucketProjectPermissionsJob) Routines(_ context.Context, logger log.Logger) ([]goroutine.BackgroundRoutine, error) {
-	wdb, err := workerdb.InitDBWithLogger(logger)
+	wdb, err := workerdb.InitDBWithLogger(logger, j.observationContext)
 	if err != nil {
 		return nil, err
 	}

@@ -32,6 +32,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/codeintel"
 	"github.com/sourcegraph/sourcegraph/internal/codeintel/dependencies"
 	stores "github.com/sourcegraph/sourcegraph/internal/codeintel/shared"
+	"github.com/sourcegraph/sourcegraph/internal/codeintel/shared/gitserver"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/conf/conftypes"
 	"github.com/sourcegraph/sourcegraph/internal/database"
@@ -103,6 +104,11 @@ func main() {
 	profiler.Init()
 
 	logger := log.Scoped("server", "the gitserver service")
+	observationContext := &observation.Context{
+		Logger:     logger,
+		Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
+		Registerer: prometheus.DefaultRegisterer,
+	}
 
 	if reposDir == "" {
 		logger.Fatal("SRC_REPOS_DIR is required")
@@ -116,16 +122,18 @@ func main() {
 		logger.Fatal("SRC_REPOS_DESIRED_PERCENT_FREE is out of range", zap.Error(err))
 	}
 
-	sqlDB, err := getDB()
+	sqlDB, err := getDB(observationContext)
 	if err != nil {
 		logger.Fatal("failed to initialize database stores", zap.Error(err))
 	}
 	db := database.NewDB(logger, sqlDB)
 
 	repoStore := db.Repos()
-	services, err := codeintel.GetServices(codeintel.Databases{
-		DB:          db,
-		CodeIntelDB: stores.NoopDB,
+	services, err := codeintel.GetServices(codeintel.ServiceDependencies{
+		DB:                 db,
+		CodeIntelDB:        stores.NoopDB,
+		GitserverClient:    gitserver.New(db, observationContext),
+		ObservationContext: observationContext,
 	})
 	if err != nil {
 		logger.Fatal("failed to initialize codeintel services", zap.Error(err))
@@ -145,6 +153,7 @@ func main() {
 
 	gitserver := server.Server{
 		Logger:             logger,
+		ObservationContext: observationContext,
 		ReposDir:           reposDir,
 		DesiredPercentFree: wantPctFree2,
 		GetRemoteURLFunc: func(ctx context.Context, repo api.RepoName) (string, error) {
@@ -159,11 +168,6 @@ func main() {
 		GlobalBatchLogSemaphore: semaphore.NewWeighted(int64(batchLogGlobalConcurrencyLimit)),
 	}
 
-	observationContext := &observation.Context{
-		Logger:     logger,
-		Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
-		Registerer: prometheus.DefaultRegisterer,
-	}
 	gitserver.RegisterMetrics(db, observationContext)
 
 	if tmpDir, err := gitserver.SetupAndClearTmp(); err != nil {
@@ -311,7 +315,7 @@ func getPercent(p int) (int, error) {
 }
 
 // getDB initializes a connection to the database and returns a dbutil.DB
-func getDB() (*sql.DB, error) {
+func getDB(observationContext *observation.Context) (*sql.DB, error) {
 	// Gitserver is an internal actor. We rely on the frontend to do authz checks for
 	// user requests.
 	//
@@ -321,7 +325,7 @@ func getDB() (*sql.DB, error) {
 	dsn := conf.GetServiceConnectionValueAndRestartOnChange(func(serviceConnections conftypes.ServiceConnections) string {
 		return serviceConnections.PostgresDSN
 	})
-	return connections.EnsureNewFrontendDB(dsn, "gitserver", &observation.TestContext)
+	return connections.EnsureNewFrontendDB(dsn, "gitserver", observationContext)
 }
 
 func getRemoteURLFunc(

@@ -12,29 +12,32 @@ import (
 func GetService(
 	db database.DB,
 	gitserver GitserverClient,
+	observationContext *observation.Context,
 ) *Service {
 	svc, _ := initServiceMemo.Init(serviceDependencies{
 		db,
 		gitserver,
+		observationContext,
 	})
 
 	return svc
 }
 
 type serviceDependencies struct {
-	db        database.DB
-	gitserver GitserverClient
+	db                 database.DB
+	gitserver          GitserverClient
+	observationContext *observation.Context
 }
 
 var initServiceMemo = memo.NewMemoizedConstructorWithArg(func(deps serviceDependencies) (*Service, error) {
-	store := store.New(deps.db, scopedContext("store"))
+	store := store.New(deps.db, scopedContext("store", deps.observationContext))
 	externalServiceStore := deps.db.ExternalServices()
 
 	return newService(
 		store,
 		deps.gitserver,
 		externalServiceStore,
-		scopedContext("service"),
+		scopedContext("service", deps.observationContext),
 	), nil
 })
 
@@ -54,6 +57,6 @@ func TestService(
 	)
 }
 
-func scopedContext(component string) *observation.Context {
-	return observation.ScopedContext("codeintel", "dependencies", component)
+func scopedContext(component string, parent *observation.Context) *observation.Context {
+	return observation.ScopedContext("codeintel", "dependencies", component, parent)
 }

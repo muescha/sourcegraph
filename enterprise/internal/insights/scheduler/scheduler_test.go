@@ -8,6 +8,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
 
 	"github.com/sourcegraph/log/logtest"
+
 	edb "github.com/sourcegraph/sourcegraph/enterprise/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 	"github.com/sourcegraph/sourcegraph/internal/observation"

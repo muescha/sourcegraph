@@ -26,6 +26,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
 	"github.com/sourcegraph/sourcegraph/internal/httpserver"
 	"github.com/sourcegraph/sourcegraph/internal/logging"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration"
 	"github.com/sourcegraph/sourcegraph/internal/oobmigration/migrations"
 	"github.com/sourcegraph/sourcegraph/internal/profiler"
@@ -36,17 +37,17 @@ import (
 const addr = ":3189"
 
 // Start runs the worker.
-func Start(logger log.Logger, additionalJobs map[string]job.Job, registerEnterpriseMigrators oobmigration.RegisterMigratorsFunc) error {
+func Start(additionalJobs map[string]job.Job, registerEnterpriseMigrators oobmigration.RegisterMigratorsFunc, logger log.Logger, observationContext *observation.Context) error {
 	registerMigrators := oobmigration.ComposeRegisterMigratorsFuncs(migrations.RegisterOSSMigrators, registerEnterpriseMigrators)
 
 	builtins := map[string]job.Job{
-		"webhook-log-janitor":                   webhooks.NewJanitor(),
+		"webhook-log-janitor":                   webhooks.NewJanitor(observationContext),
 		"out-of-band-migrations":                workermigrations.NewMigrator(registerMigrators),
-		"codeintel-policies-repository-matcher": codeintel.NewPoliciesRepositoryMatcherJob(),
-		"codeintel-crates-syncer":               codeintel.NewCratesSyncerJob(),
-		"gitserver-metrics":                     gitserver.NewMetricsJob(),
-		"record-encrypter":                      encryption.NewRecordEncrypterJob(),
-		"repo-statistics-compactor":             repostatistics.NewCompactor(),
+		"codeintel-policies-repository-matcher": codeintel.NewPoliciesRepositoryMatcherJob(observationContext),
+		"codeintel-crates-syncer":               codeintel.NewCratesSyncerJob(observationContext),
+		"gitserver-metrics":                     gitserver.NewMetricsJob(observationContext),
+		"record-encrypter":                      encryption.NewRecordEncrypterJob(observationContext),
+		"repo-statistics-compactor":             repostatistics.NewCompactor(observationContext),
 	}
 
 	jobs := map[string]job.Job{}

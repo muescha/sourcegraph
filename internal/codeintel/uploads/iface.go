@@ -18,6 +18,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/gitserver"
 	"github.com/sourcegraph/sourcegraph/internal/gitserver/gitdomain"
 	"github.com/sourcegraph/sourcegraph/internal/gitserver/protocol"
+	ruprotocol "github.com/sourcegraph/sourcegraph/internal/repoupdater/protocol"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 	dbworkerstore "github.com/sourcegraph/sourcegraph/internal/workerutil/dbworker/store"
 )
@@ -102,5 +103,6 @@ type AutoIndexingService interface {
 }
 
 type RepoUpdaterClient interface {
-	EnqueueRepoUpdate(ctx context.Context, repo api.RepoName) (*protocol.RepoUpdateResponse, error)
+	EnqueueRepoUpdate(ctx context.Context, repo api.RepoName) (*ruprotocol.RepoUpdateResponse, error)
+	RepoLookup(ctx context.Context, name api.RepoName) (info *ruprotocol.RepoInfo, err error)
 }

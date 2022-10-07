@@ -10,12 +10,20 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/codeintel/autoindexing/background/cleanup"
 	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 )
 
-type autoindexingJanitorJob struct{}
+type autoindexingJanitorJob struct {
+	observationContext *observation.Context
+}
 
-func NewAutoindexingJanitorJob() job.Job {
-	return &autoindexingJanitorJob{}
+func NewAutoindexingJanitorJob(observationContext *observation.Context) job.Job {
+	return &autoindexingJanitorJob{observationContext: &observation.Context{
+		Logger:       log.NoOp(),
+		Tracer:       observationContext.Tracer,
+		Registerer:   observationContext.Registerer,
+		HoneyDataset: observationContext.HoneyDataset,
+	}}
 }
 
 func (j *autoindexingJanitorJob) Description() string {
@@ -29,7 +37,7 @@ func (j *autoindexingJanitorJob) Config() []env.Config {
 }
 
 func (j *autoindexingJanitorJob) Routines(startupCtx context.Context, logger log.Logger) ([]goroutine.BackgroundRoutine, error) {
-	services, err := codeintel.InitServices()
+	services, err := codeintel.InitServices(j.observationContext)
 	if err != nil {
 		return nil, err
 	}

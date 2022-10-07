@@ -15,10 +15,17 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/workerutil/dbworker"
 )
 
-type metricsReporterJob struct{}
+type metricsReporterJob struct {
+	observationContext *observation.Context
+}
 
-func NewMetricsReporterJob() job.Job {
-	return &metricsReporterJob{}
+func NewMetricsReporterJob(observationContext *observation.Context) job.Job {
+	return &metricsReporterJob{observationContext: &observation.Context{
+		Logger:       log.NoOp(),
+		Tracer:       observationContext.Tracer,
+		Registerer:   observationContext.Registerer,
+		HoneyDataset: observationContext.HoneyDataset,
+	}}
 }
 
 func (j *metricsReporterJob) Description() string {
@@ -32,13 +39,14 @@ func (j *metricsReporterJob) Config() []env.Config {
 }
 
 func (j *metricsReporterJob) Routines(startupCtx context.Context, logger log.Logger) ([]goroutine.BackgroundRoutine, error) {
-	services, err := codeintel.InitServices()
+	services, err := codeintel.InitServices(j.observationContext)
 	if err != nil {
 		return nil, err
 	}
 
 	observationContext := observation.ContextWithLogger(
 		logger.Scoped("routines", "metrics reporting routines"),
+		j.observationContext,
 	)
 
 	services.UploadsService.MetricReporters(observationContext)

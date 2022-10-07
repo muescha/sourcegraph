@@ -9,13 +9,21 @@ import (
 	workerdb "github.com/sourcegraph/sourcegraph/cmd/worker/shared/init/db"
 	"github.com/sourcegraph/sourcegraph/internal/env"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
+	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/internal/services/executors"
 )
 
-type janitorJob struct{}
+type janitorJob struct {
+	observationContext *observation.Context
+}
 
-func NewJanitorJob() job.Job {
-	return &janitorJob{}
+func NewJanitorJob(observationContext *observation.Context) job.Job {
+	return &janitorJob{observationContext: &observation.Context{
+		Logger:       log.NoOp(),
+		Tracer:       observationContext.Tracer,
+		Registerer:   observationContext.Registerer,
+		HoneyDataset: observationContext.HoneyDataset,
+	}}
 }
 
 func (j *janitorJob) Description() string {
@@ -27,7 +35,7 @@ func (j *janitorJob) Config() []env.Config {
 }
 
 func (j *janitorJob) Routines(startupCtx context.Context, logger log.Logger) ([]goroutine.BackgroundRoutine, error) {
-	db, err := workerdb.InitDBWithLogger(logger)
+	db, err := workerdb.InitDBWithLogger(logger, j.observationContext)
 	if err != nil {
 		return nil, err
 	}

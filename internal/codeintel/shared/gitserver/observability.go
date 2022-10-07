@@ -2,8 +2,10 @@ package gitserver
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/sourcegraph/sourcegraph/internal/gitserver/gitdomain"
+	"github.com/sourcegraph/sourcegraph/internal/memo"
 	"github.com/sourcegraph/sourcegraph/internal/metrics"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
@@ -26,7 +28,12 @@ type operations struct {
 	listTags              *observation.Operation
 }
 
-func newOperations(observationContext *observation.Context) *operations {
+var (
+	once sync.Once
+	ops  *operations
+)
+
+var newOperations = memo.NewMemoizedConstructorWithArg(func(observationContext *observation.Context) (*operations, error) {
 	metrics := metrics.NewREDMetrics(
 		observationContext.Registerer,
 		"codeintel_gitserver",
@@ -68,5 +75,5 @@ func newOperations(observationContext *observation.Context) *operations {
 		repoInfo:              op("RepoInfo"),
 		resolveRevision:       op("ResolveRevision"),
 		listTags:              op("ListTags"),
-	}
-}
+	}, nil
+})

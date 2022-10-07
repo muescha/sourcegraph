@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sourcegraph/sourcegraph/internal/honey"
 	"github.com/sourcegraph/sourcegraph/internal/metrics"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
 )
@@ -66,9 +65,7 @@ func newOperations(observationContext *observation.Context) *operations {
 		})
 	}
 
-	honeyObservationContext := *observationContext
-	honeyObservationContext.HoneyDataset = &honey.Dataset{Name: "codeintel-worker"}
-	uploadProcessor := honeyObservationContext.Operation(observation.Op{
+	uploadProcessor := observationContext.Operation(observation.Op{
 		Name: "codeintel.uploadHandler",
 		ErrorFilter: func(err error) observation.ErrorFilterBehaviour {
 			return observation.EmitForTraces | observation.EmitForHoney

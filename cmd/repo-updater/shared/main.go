@@ -27,6 +27,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/batches"
 	"github.com/sourcegraph/sourcegraph/internal/codeintel"
 	codeintelshared "github.com/sourcegraph/sourcegraph/internal/codeintel/shared"
+	"github.com/sourcegraph/sourcegraph/internal/codeintel/shared/gitserver"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/conf/conftypes"
 	"github.com/sourcegraph/sourcegraph/internal/database"
@@ -92,6 +93,11 @@ func Main(enterpriseInit EnterpriseInit) {
 	profiler.Init()
 
 	logger := log.Scoped("service", "repo-updater service")
+	observationContext := &observation.Context{
+		Logger:     log.NoOp(),
+		Tracer:     &trace.Tracer{TracerProvider: otel.GetTracerProvider()},
+		Registerer: prometheus.DefaultRegisterer,
+	}
 
 	// Signals health of startup
 	ready := make(chan struct{})
@@ -109,7 +115,7 @@ func Main(enterpriseInit EnterpriseInit) {
 	dsn := conf.GetServiceConnectionValueAndRestartOnChange(func(serviceConnections conftypes.ServiceConnections) string {
 		return serviceConnections.PostgresDSN
 	})
-	sqlDB, err := connections.EnsureNewFrontendDB(dsn, "repo-updater", &observation.TestContext)
+	sqlDB, err := connections.EnsureNewFrontendDB(dsn, "repo-updater", observationContext)
 	if err != nil {
 		logger.Fatal("failed to initialize database store", log.Error(err))
 	}
@@ -140,9 +146,11 @@ func Main(enterpriseInit EnterpriseInit) {
 		m := repos.NewSourceMetrics()
 		m.MustRegister(prometheus.DefaultRegisterer)
 
-		services, err := codeintel.GetServices(codeintel.Databases{
-			DB:          db,
-			CodeIntelDB: codeintelshared.NoopDB,
+		services, err := codeintel.GetServices(codeintel.ServiceDependencies{
+			DB:                 db,
+			CodeIntelDB:        codeintelshared.NoopDB,
+			GitserverClient:    gitserver.New(db, observationContext),
+			ObservationContext: observationContext,
 		})
 		if err != nil {
 			logger.Fatal("failed to initialize codeintelservices", log.Error(err))
@@ -153,6 +161,7 @@ func Main(enterpriseInit EnterpriseInit) {
 	updateScheduler := repos.NewUpdateScheduler(logger, db)
 	server := &repoupdater.Server{
 		Logger:                logger,
+		ObservationContext:    observationContext,
 		Store:                 store,
 		Scheduler:             updateScheduler,
 		SourcegraphDotComMode: envvar.SourcegraphDotComMode(),
@@ -357,7 +366,7 @@ func manualPurgeHandler(db database.DB) http.HandlerFunc {
 			http.Error(w, "limit must be less than 10000", http.StatusBadRequest)
 			return
 		}
-		var perSecond = 1.0 // Default value
+		perSecond := 1.0 // Default value
 		perSecondParam := r.FormValue("perSecond")
 		if perSecondParam != "" {
 			perSecond, err = strconv.ParseFloat(perSecondParam, 64)
