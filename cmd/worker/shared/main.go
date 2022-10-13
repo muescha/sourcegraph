@@ -42,7 +42,7 @@ func Start(additionalJobs map[string]job.Job, registerEnterpriseMigrators oobmig
 
 	builtins := map[string]job.Job{
 		"webhook-log-janitor":                   webhooks.NewJanitor(observationContext),
-		"out-of-band-migrations":                workermigrations.NewMigrator(registerMigrators),
+		"out-of-band-migrations":                workermigrations.NewMigrator(registerMigrators, observationContext),
 		"codeintel-policies-repository-matcher": codeintel.NewPoliciesRepositoryMatcherJob(observationContext),
 		"codeintel-crates-syncer":               codeintel.NewCratesSyncerJob(observationContext),
 		"gitserver-metrics":                     gitserver.NewMetricsJob(observationContext),
