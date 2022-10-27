@@ -554,7 +554,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 {blocks.map((block, blockIndex) => (
                     <div key={block.id}>
                         {/* MARK */}
-                        {/* <NotebookBlockSeparator isReadOnly={isReadOnly} index={blockIndex} onAddBlock={onAddBlock} /> */}
+                        <NotebookBlockSeparator isReadOnly={isReadOnly} index={blockIndex} onAddBlock={onAddBlock} />
                         {renderBlock(block)}
                     </div>
                 ))}

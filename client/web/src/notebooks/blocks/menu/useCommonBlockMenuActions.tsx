@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { mdiContentDuplicate, mdiArrowUp, mdiArrowDown, mdiDelete } from '@mdi/js'
+import { mdiContentDuplicate, mdiArrowUp, mdiArrowDown, mdiDelete, mdiArrowLeftBottomBold } from '@mdi/js'
 
 import { isMacPlatform as isMacPlatformFunc } from '@sourcegraph/common'
 import { Icon } from '@sourcegraph/wildcard'
@@ -53,6 +53,13 @@ export const useCommonBlockMenuActions = ({
                 icon: <Icon aria-hidden={true} svgPath={mdiDelete} />,
                 onClick: onDeleteBlock,
                 keyboardShortcutLabel: !isInputFocused ? (isMacPlatform ? '⌘ + ⌫' : 'Del') : '',
+            },
+            {
+                type: 'button',
+                label: 'Add block below',
+                icon: <Icon aria-hidden={true} svgPath={mdiArrowLeftBottomBold} />,
+                onClick: onDeleteBlock, // TODO: NEXT_1/2
+                keyboardShortcutLabel: !isInputFocused ? (isMacPlatform ? '⌘ + ⌫' : 'Del') : '', // TODO: NEXT_2/2
             },
         ]
     }, [isReadOnly, isMacPlatform, isInputFocused, modifierKeyLabel, onMoveBlock, onDeleteBlock, onDuplicateBlock])
