@@ -9,7 +9,7 @@ import { UIRangeSpec } from '@sourcegraph/shared/src/util/url'
 import { HighlightLineRange, SymbolKind } from '../graphql-operations'
 
 // When adding a new block type, make sure to track its usage in internal/usagestats/notebooks.go.
-export type BlockType = 'md' | 'query' | 'file' | 'compute' | 'symbol'
+export type BlockType = 'md' | 'query' | 'file' | 'compute' | 'symbol' | 'undecided'
 
 interface BaseBlock<I, O> {
     id: string
@@ -76,7 +76,11 @@ export interface SymbolBlock extends BaseBlock<SymbolBlockInput, Observable<Symb
     type: 'symbol'
 }
 
-export type Block = QueryBlock | MarkdownBlock | FileBlock | ComputeBlock | SymbolBlock
+export interface UndecidedBlock extends BaseBlock<string, Observable<string>> {
+    type: 'undecided'
+}
+
+export type Block = QueryBlock | MarkdownBlock | FileBlock | ComputeBlock | SymbolBlock | UndecidedBlock
 
 export type BlockInput =
     | Pick<FileBlock, 'type' | 'input'>
@@ -84,6 +88,7 @@ export type BlockInput =
     | Pick<QueryBlock, 'type' | 'input'>
     | Pick<ComputeBlock, 'type' | 'input'>
     | Pick<SymbolBlock, 'type' | 'input'>
+    | Pick<UndecidedBlock, 'type' | 'input'>
 
 export type BlockInit =
     | Omit<FileBlock, 'output'>
@@ -91,6 +96,7 @@ export type BlockInit =
     | Omit<QueryBlock, 'output'>
     | Omit<ComputeBlock, 'output'>
     | Omit<SymbolBlock, 'output'>
+    | Omit<UndecidedBlock, 'output'>
 
 export type SerializableBlock =
     | Pick<FileBlock, 'type' | 'input'>
@@ -98,6 +104,7 @@ export type SerializableBlock =
     | Pick<QueryBlock, 'type' | 'input'>
     | Pick<ComputeBlock, 'type' | 'input'>
     | Pick<SymbolBlock, 'type' | 'input' | 'output'>
+    | Pick<UndecidedBlock, 'type' | 'input'>
 
 export type BlockDirection = 'up' | 'down'
 
@@ -110,6 +117,7 @@ export interface BlockProps<T extends Block = Block> {
     output: T['output']
     onRunBlock(id: string): void
     onDeleteBlock(id: string): void
+    onAddBlock(id: string): void
     onBlockInputChange(id: string, blockInput: BlockInput): void
     onMoveBlock(id: string, direction: BlockDirection): void
     onDuplicateBlock(id: string): void

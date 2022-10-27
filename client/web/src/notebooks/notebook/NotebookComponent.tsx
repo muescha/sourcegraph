@@ -45,6 +45,7 @@ import { focusBlockElement, useNotebookEventHandlers } from './useNotebookEventH
 import { Notebook, CopyNotebookProps } from '.'
 
 import styles from './NotebookComponent.module.scss'
+import { NotebookAddBlockButtons } from './NotebookAddBlockButtons'
 
 export interface NotebookComponentProps
     extends SearchStreamingProps,
@@ -75,6 +76,7 @@ function countBlockTypes(blocks: Block[]): BlockCounts {
         query: 0,
         compute: 0,
         symbol: 0,
+        undecided: 0,
     })
 }
 
@@ -232,6 +234,27 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
             [notebook, updateBlocks]
         )
 
+        const onAddBlockBelow = useCallback(
+            (id: string) => {
+                if (isReadOnly) {
+                    return
+                }
+                // const block = notebook.getBlockById(id)
+                let blockIndex = blocks.length
+                for (let idx = 0; idx < blocks.length; idx++) {
+                    if (blocks[idx].id === id) {
+                        blockIndex = idx + 1
+                        break
+                    }
+                }
+                const addedBlock = notebook.insertBlockAtIndex(blockIndex, { type: 'undecided', input: '' })
+                selectBlock(addedBlock.id)
+                updateBlocks()
+                telemetryService.log('SearchNotebookAddBlock', { type: addedBlock.type }, { type: addedBlock.type })
+            },
+            [notebook, isReadOnly, telemetryService, updateBlocks, selectBlock, blocks]
+        )
+
         const onAddBlock = useCallback(
             (index: number, blockInput: BlockInput) => {
                 if (isReadOnly) {
@@ -315,6 +338,30 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
             },
             [notebook, isReadOnly, telemetryService, selectBlock, updateBlocks, focusBlock]
         )
+
+        // const onInsertNewBlockBelow = useCallback(
+        //     (id: string) => {
+        //         if (isReadOnly) {
+        //             return
+        //         }
+
+        //         const newBlock = notebook.insertBlockAtIndex(notebook.getBlockIndexById(id) + 1, {
+        //             type: 'undecided',
+        //             text: '',
+        //             initialFocus: true
+        //         })
+        //         selectBlock(newBlock.id)
+        //         focusBlock(newBlock.id)
+        //         updateBlocks()
+
+        //         telemetryService.log(
+        //             'SearchNotebookInsertNewBlockBelow',
+        //             { type: newBlock.type },
+        //             { type: newBlock.type }
+        //         )
+        //     },
+        //     [notebook, isReadOnly, telemetryService, selectBlock, updateBlocks, focusBlock]
+        // )
 
         const onFocusLastBlock = useCallback(() => {
             const lastBlockId = notebook.getLastBlockId()
@@ -414,6 +461,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                     onDeleteBlock,
                     onMoveBlock,
                     onDuplicateBlock,
+                    onAddBlockBelow,
                     isLightTheme,
                     isReadOnly,
                     isSelected: selectedBlockId === block.id,
@@ -466,6 +514,11 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                                 hoverifier={hoverifier}
                                 extensionsController={extensionsController}
                             />
+                        )
+                    case 'undecided':
+                        return (
+                            // TODO:NEXT: (maybe) add a NotebookUndecidedBlock class mimicking NotebookAddBlockButtons
+                            <NotebookAddBlockButtons />
                         )
                 }
             },
