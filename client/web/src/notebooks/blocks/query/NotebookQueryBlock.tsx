@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react'
 
 import { EditorView } from '@codemirror/view'
-import { mdiPlayCircleOutline, mdiOpenInNew } from '@mdi/js'
+import { mdiPlayCircleOutline, mdiOpenInNew, mdiMagnify } from '@mdi/js'
 import classNames from 'classnames'
 import { Observable, of } from 'rxjs'
 
@@ -169,28 +169,39 @@ export const NotebookQueryBlock: React.FunctionComponent<React.PropsWithChildren
                 {...props}
             >
                 <div className={styles.content}>
-                    <div className="mb-1 text-muted">Search query</div>
                     <div className={styles.queryInputWrapper}>
-                        <CodeMirrorQueryInput
-                            value={input.query}
-                            patternType={SearchPatternType.standard}
-                            interpretComments={true}
-                            isLightTheme={isLightTheme}
-                            onEditorCreated={setEditor}
-                            extensions={useMemo(
-                                () => [
-                                    EditorView.lineWrapping,
-                                    queryCompletion,
-                                    changeListener(onInputChange),
-                                    blockKeymap({ runBlock }),
-                                    maxEditorHeight,
-                                    editorAttributes,
-                                ],
-                                [queryCompletion, runBlock, onInputChange]
-                            )}
-                        />
-                    </div>
+                        {/* Icon and code mirror input on one line */}
 
+                        <Icon
+                            aria-hidden={true}
+                            svgPath={mdiMagnify}
+                            style={{
+                                display: 'inline-block',
+                            }}
+                         />
+
+                        {/* //eslint-disable-next-line react/forbid-dom-props */}
+                        <div style={{display: 'inline-block', paddingLeft: '0.5em'}}>
+                            <CodeMirrorQueryInput
+                                value={input.query}
+                                patternType={SearchPatternType.standard}
+                                interpretComments={true}
+                                isLightTheme={isLightTheme}
+                                onEditorCreated={setEditor}
+                                extensions={useMemo(
+                                    () => [
+                                        EditorView.lineWrapping,
+                                        queryCompletion,
+                                        changeListener(onInputChange),
+                                        blockKeymap({ runBlock }),
+                                        maxEditorHeight,
+                                        editorAttributes,
+                                    ],
+                                    [queryCompletion, runBlock, onInputChange]
+                                )}
+                            />
+                        </div>
+                    </div>
                     {searchResults && searchResults.state === 'loading' && (
                         <div className={classNames('d-flex justify-content-center py-3', styles.results)}>
                             <LoadingSpinner />

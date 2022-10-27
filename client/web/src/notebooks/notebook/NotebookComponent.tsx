@@ -514,7 +514,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 className={classNames(styles.searchNotebook, isReadOnly && 'is-read-only-notebook')}
                 ref={notebookElement}
             >
-                <div className="pb-1 px-3">
+                <div className={classNames(styles.header, 'pb-1', 'px-3')}>
                     <Button
                         className="mr-2"
                         variant="primary"
@@ -553,7 +553,8 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 </div>
                 {blocks.map((block, blockIndex) => (
                     <div key={block.id}>
-                        <NotebookBlockSeparator isReadOnly={isReadOnly} index={blockIndex} onAddBlock={onAddBlock} />
+                        {/* MARK */}
+                        {/* <NotebookBlockSeparator isReadOnly={isReadOnly} index={blockIndex} onAddBlock={onAddBlock} /> */}
                         {renderBlock(block)}
                     </div>
                 ))}
