@@ -2,14 +2,16 @@ import React, { useCallback } from 'react'
 
 import { mdiLanguageMarkdownOutline, mdiMagnify, mdiCodeTags, mdiFunction, mdiLaptop } from '@mdi/js'
 
+import { ThemeProps } from '@sourcegraph/shared/src/theme'
 import { Button, Icon, Tooltip } from '@sourcegraph/wildcard'
 
-import { BlockInput } from '..'
+import { BlockInput, BlockProps, UndecidedBlock } from '..'
 import { useExperimentalFeatures } from '../../stores'
 
 import { EMPTY_FILE_BLOCK_INPUT, EMPTY_SYMBOL_BLOCK_INPUT } from './useCommandPaletteOptions'
 
 import styles from './NotebookAddBlockButtons.module.scss'
+
 
 interface NotebookAddBlockButtonsProps {
     onAddBlock: (blockIndex: number, blockInput: BlockInput) => void
@@ -79,3 +81,34 @@ export const NotebookAddBlockButtons: React.FunctionComponent<
         </>
     )
 }
+
+interface NotebookUndecidedBlockProps extends BlockProps<UndecidedBlock>, ThemeProps {
+    isEmbedded?: boolean
+    onSetUndecidedBlock: (id: string, blockInput: BlockInput) => void
+}
+
+// UndecidedBlock component
+export const NotebookUndecidedBlock: React.FunctionComponent<
+    React.PropsWithChildren<NotebookUndecidedBlockProps>
+> = React.memo(
+    ({
+        id,
+        onSetUndecidedBlock,
+        ...props
+    }) => {
+        const setUndecided = useCallback((id: string, blockInput: BlockInput) => onSetUndecidedBlock(id, blockInput), [onSetUndecidedBlock])
+        // NEXT: Add other tooltips here
+        return (
+            <Tooltip content="Add Markdown text">
+                <Button
+                    className={styles.addBlockButton}
+                    onClick={() => setUndecided(id, { type: 'md', input: { text: '', initialFocusInput: true } })}
+                    data-testid="add-md-block"
+                    aria-label="Add markdown"
+                >
+                    <Icon aria-hidden={true} size="sm" svgPath={mdiLanguageMarkdownOutline} />
+                </Button>
+            </Tooltip>
+        )
+    }
+)

@@ -178,6 +178,8 @@ export function blockToGQLInput(block: BlockInit): CreateNotebookBlockInput {
             return { id: block.id, type: NotebookBlockType.SYMBOL, symbolInput: block.input }
         case 'compute':
             return { id: block.id, type: NotebookBlockType.COMPUTE, computeInput: block.input }
+        case 'undecided':
+            return { id: block.id, type: NotebookBlockType.UNDECIDED, computeInput: block.input }
     }
 }
 
@@ -203,6 +205,12 @@ export function GQLBlockToGQLInput(block: NotebookFields['blocks'][number]): Cre
             return {
                 id: block.id,
                 type: NotebookBlockType.COMPUTE,
+                computeInput: block.computeInput,
+            }
+        case 'UndecidedBlock':
+            return {
+                id: block.id,
+                type: NotebookBlockType.UNDECIDED,
                 computeInput: block.computeInput,
             }
     }
