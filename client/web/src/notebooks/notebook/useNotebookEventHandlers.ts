@@ -155,8 +155,7 @@ export function useNotebookEventHandlers({
                     if (
                         (event.key === 'ArrowUp' && !isTopOfBlockVisible(selectedBlockId)) ||
                         (event.key === 'ArrowDown' && !isBottomOfBlockVisible(selectedBlockId)) ||
-                        (event.key === 'ArrowUp' && selectedBlockId === notebook.getFirstBlockId()) ||
-                        (event.key === 'ArrowDown' && selectedBlockId === notebook.getLastBlockId())
+                        (event.key === 'ArrowUp' && selectedBlockId === notebook.getFirstBlockId())
                     ) {
                         return
                     }

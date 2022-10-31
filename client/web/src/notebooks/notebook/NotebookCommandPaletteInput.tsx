@@ -21,14 +21,13 @@ interface NotebookCommandPaletteInputProps {
 }
 
 export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, NotebookCommandPaletteInputProps>(
-    ({ index, onAddBlock, onFocusPreviousBlock, onDeselected }, reference) => {
+    ({ index, onAddBlock, onFocusPreviousBlock, onDeselected, hasFocus }, reference) => {
         const [input, setInput] = useState('')
         const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
         const [showCommandPalette, setShowCommandPalette] = useState(false)
         const rootReference = useRef<HTMLDivElement>(null)
         const inputReference = useRef<HTMLInputElement>(null)
         const mergedInputReference = useMergeRefs([inputReference, reference])
-        const [isFocused, setFocused] = useState(true)
 
         const addBlock = useCallback(
             (blockInput: BlockInput) => {
@@ -137,38 +136,10 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
         })
 
         useEffect(() => {
-            inputReference.current?.focus()
-        }, [])
-
-        // useEffect(() => {
-        //     if (isFocused) {
-        //         inputReference.current?.focus()
-        //     } else {
-        //         inputReference.current?.blur()
-        //     }
-        // }, [isFocused])
-
-        // useEffect(() => {
-        //     if (isFocused) {
-        //         // focus input on first appearance
-        //         inputReference.current?.focus()
-        //         return
-        //      } 
-
-        //     inputReference.current?.blur()
-        //     if (selectedOptionId !== null) {
-        //         return
-        //     }
-        //     if (inputReference.current === document.activeElement) {
-        //         return
-        //     }
-        //     if (rootReference.current?.contains(document.activeElement)) {
-        //         return
-        //     }
-        //     // console.log('###', document.activeElement)
-        //     // setTimeout(() => onDeselected?.(), 2000)
-        //     onDeselected?.()
-        // }, [isFocused, onDeselected, selectedOptionId])
+            if (hasFocus) {
+                inputReference.current?.focus()
+            }
+        }, [hasFocus])
 
         return (
             <div role="generic" className={styles.root} ref={rootReference} data-testid="notebook-command-palette">
@@ -182,11 +153,7 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
                         onChange={event => setInput(event.target.value)}
                         placeholder="Type something to get started, paste a file URL, or use / to open the command palette"
                         aria-label="Type something to get started, paste a file URL, or use / to open the command palette"
-                        onFocus={() => {
-                            setFocused(true)
-                            openCommandPalette()
-                        }}
-                        onBlur={() => setFocused(false)}
+                        onFocus={openCommandPalette}
                         data-testid="command-palette-input"
                     />
                     {!showCommandPalette && <NotebookAddBlockButtons index={index} onAddBlock={onAddBlock} />}

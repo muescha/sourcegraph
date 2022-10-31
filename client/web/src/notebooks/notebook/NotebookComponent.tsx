@@ -127,16 +127,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
 
         const notebookElement = useRef<HTMLDivElement | null>(null)
         const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
-        const [blockAdders, setBlockAdders] = useState<Set<number>>(new Set())
-        // const addBlockAdder = (idx: number): void => setBlockAdders(new Set(blockAdders).add(idx))
-        // const removeBlockAdder = (idx: number): void => setBlockAdders(new Set([...blockAdders].filter(elem => elem !== idx)))
-        // const [blockAdders, setBlockAdders] = useState<Map<number, void>>(new Map())
-        // const addBlockAdder = (idx: number): void => setBlockAdders(new Map(...blockAdders, [idx, null]))
-        // const removeBlockAddr = (idx: number): void => {
-        //     const m = new Map(...blockAddrs)
-        //     m.delete(idx)
-        //     setBlockAdders(m)
-        // }
+        const [blockInserterIndex, setBlockInserterIndex] = useState<number>(-1)
 
         const [blocks, setBlocks] = useState<Block[]>(notebook.getBlocks())
         const commandPaletteInputReference = useRef<HTMLInputElement>(null)
@@ -162,6 +153,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
 
         const selectBlock = useCallback(
             (blockId: string | null) => {
+                console.log("# selectBlock")
                 if (!isReadOnly) {
                     setSelectedBlockId(blockId)
                 }
@@ -169,7 +161,9 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
             [isReadOnly, setSelectedBlockId]
         )
 
-        const focusBlock = useCallback((blockId: string) => focusBlockElement(blockId, isReadOnly), [isReadOnly])
+        const focusBlock = useCallback((blockId: string) => {
+            focusBlockElement(blockId, isReadOnly)
+        }, [isReadOnly])
 
         // Update the blocks if the notebook instance changes (when new initializer blocks are provided)
         useEffect(() => setBlocks(notebook.getBlocks()), [notebook])
@@ -251,7 +245,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                     return
                 }
                 const idx = notebook.getBlockIndex(id)
-                setBlockAdders(blockAdders => new Set(blockAdders).add(idx + 1))
+                setBlockInserterIndex(idx + 1)
                 selectBlock(null)
             },
             [isReadOnly, notebook, selectBlock]
@@ -262,19 +256,13 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 if (isReadOnly) {
                     return
                 }
-                if (notebook.getBlocks().length === 0) {
+                if (blocks.length === 0) {
                     return
                 }
-                let blockToSelectIndex = 0
-                for (const val of blockAdders) {
-                    blockToSelectIndex = val - 1
-                    break;
-                }
-                selectBlock(notebook.getBlocks()[blockToSelectIndex].id)
-                setBlockAdders(new Set())
-                updateBlocks()
-                
-            }, [isReadOnly, notebook, selectBlock, updateBlocks, blockAdders]
+                const blockToSelectIndex = blockInserterIndex - 1
+                selectBlock(blocks[blockToSelectIndex].id)
+                setBlockInserterIndex(-1)                
+            }, [isReadOnly, blocks, selectBlock, blockInserterIndex]
         )
 
         const onAddBlock = useCallback(
@@ -290,12 +278,13 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                     notebook.runBlockById(addedBlock.id)
                 }
                 selectBlock(addedBlock.id)
-                setBlockAdders(new Set())
+                focusBlock(addedBlock.id)
+                setBlockInserterIndex(-1)
                 updateBlocks()
 
                 telemetryService.log('SearchNotebookAddBlock', { type: addedBlock.type }, { type: addedBlock.type })
             },
-            [notebook, isReadOnly, telemetryService, updateBlocks, selectBlock]
+            [isReadOnly, notebook, selectBlock, focusBlock, updateBlocks, telemetryService]
         )
 
         const onDeleteBlock = useCallback(
@@ -468,7 +457,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                     isLightTheme,
                     isReadOnly,
                     isSelected: selectedBlockId === block.id,
-                    isOtherBlockSelected: (selectedBlockId !== null && selectedBlockId !== block.id) || (blockAdders.size > 0),
+                    isOtherBlockSelected: (selectedBlockId !== null && selectedBlockId !== block.id) || (blockInserterIndex !== -1), // TODO: rename isOtherBlockSelected to isOtherElementSelected
                 }
 
                 switch (block.type) {
@@ -553,7 +542,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 settingsCascade,
                 platformContext,
                 authenticatedUser,
-                blockAdders,
+                blockInserterIndex,
             ]
         )
 
@@ -618,17 +607,19 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 </div>
                 {blocks.map((block, blockIndex) => (
                     <div key={block.id}>
-                        {blockAdders.has(blockIndex) && <NotebookCommandPaletteInput
+                        {blockInserterIndex === blockIndex && <NotebookCommandPaletteInput
+                            hasFocus={true}
                             ref={floatingCommandPaletteInputReference}
                             index={blockIndex}
                             onAddBlock={onAddBlock}
-                            onDeselected={onDismissAddProtoBlock} // TODO: onSuggestDismissal
+                            onDeselected={onDismissAddProtoBlock} // TODO: rename onDeselected to onSuggestDismissal
                         />}
                         {renderBlock(block, blockIndex)}
                     </div>
                 ))}
                 {!isReadOnly && (
                     <NotebookCommandPaletteInput
+                        hasFocus={blockInserterIndex === blocks.length}
                         ref={commandPaletteInputReference}
                         index={blocks.length}
                         onAddBlock={onAddBlock}
