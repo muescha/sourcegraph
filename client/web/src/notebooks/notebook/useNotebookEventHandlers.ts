@@ -8,7 +8,7 @@ import { BlockDirection, BlockProps } from '..'
 import { Notebook } from '.'
 
 interface UseNotebookEventHandlersProps
-    extends Pick<BlockProps, 'isReadOnly' | 'onMoveBlock' | 'onRunBlock' | 'onDeleteBlock' | 'onDuplicateBlock'> {
+    extends Pick<BlockProps, 'isReadOnly' | 'onMoveBlock' | 'onRunBlock' | 'onDeleteBlock' | 'onDuplicateBlock' | 'onAddProtoBlock'> {
     notebook: Notebook
     selectedBlockId: string | null
     commandPaletteInputReference: React.RefObject<HTMLInputElement>
@@ -58,6 +58,7 @@ export function useNotebookEventHandlers({
     onRunBlock,
     onDeleteBlock,
     onDuplicateBlock,
+    onAddProtoBlock,
 }: UseNotebookEventHandlersProps): void {
     const onMoveBlockSelection = useCallback(
         (id: string, direction: BlockDirection) => {
@@ -163,8 +164,11 @@ export function useNotebookEventHandlers({
                     // Prevent page scrolling
                     event.preventDefault()
                 }
-            } else if (event.key === 'Enter' && isModifierKeyDown) {
+            } else if (event.key === 'Enter' && isModifierKeyDown && !event.shiftKey) {
                 onRunBlock(selectedBlockId)
+            } else if (event.key === 'Enter' && isModifierKeyDown && event.shiftKey) {
+                event.preventDefault()
+                onAddProtoBlock(selectedBlockId)
             } else if (event.key === 'Delete' || (event.key === 'Backspace' && isModifierKeyDown)) {
                 onDeleteBlock(selectedBlockId)
             } else if (event.key === 'd' && isModifierKeyDown) {
@@ -196,5 +200,6 @@ export function useNotebookEventHandlers({
         onRunBlock,
         onDeleteBlock,
         onDuplicateBlock,
+        onAddProtoBlock,
     ])
 }

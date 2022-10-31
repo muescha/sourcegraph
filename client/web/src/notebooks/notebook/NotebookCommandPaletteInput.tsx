@@ -15,17 +15,20 @@ import styles from './NotebookCommandPaletteInput.module.scss'
 interface NotebookCommandPaletteInputProps {
     index: number
     onAddBlock: (blockIndex: number, blockInput: BlockInput) => void
-    onFocusPreviousBlock: () => void
+    onFocusPreviousBlock?: () => void
+    onDeselected?: () => void
+    hasFocus?: boolean
 }
 
 export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, NotebookCommandPaletteInputProps>(
-    ({ index, onAddBlock, onFocusPreviousBlock }, reference) => {
+    ({ index, onAddBlock, onFocusPreviousBlock, onDeselected }, reference) => {
         const [input, setInput] = useState('')
         const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
         const [showCommandPalette, setShowCommandPalette] = useState(false)
         const rootReference = useRef<HTMLDivElement>(null)
         const inputReference = useRef<HTMLInputElement>(null)
         const mergedInputReference = useMergeRefs([inputReference, reference])
+        const [isFocused, setFocused] = useState(true)
 
         const addBlock = useCallback(
             (blockInput: BlockInput) => {
@@ -39,14 +42,16 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
         const focusOption = useCallback(
             (id: string | null) => {
                 setSelectedOptionId(id)
-                if (!id) {
-                    return
-                }
-                const optionButton = rootReference.current?.querySelector<HTMLButtonElement>(`[data-option-id="${id}"]`)
-                optionButton?.focus()
             },
-            [rootReference, setSelectedOptionId]
+            [setSelectedOptionId]
         )
+        useEffect(() => {
+            if (!selectedOptionId) {
+                return
+            }
+            const optionButton = rootReference.current?.querySelector<HTMLButtonElement>(`[data-option-id="${selectedOptionId}"]`)
+            optionButton?.focus()
+        }, [selectedOptionId])
 
         const openCommandPalette = useCallback(() => {
             if (input.trim().length === 0) {
@@ -84,14 +89,21 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
         const onKeyDown = useCallback(
             (event: React.KeyboardEvent<HTMLInputElement>) => {
                 if (event.key === 'ArrowDown') {
-                    focusOption(getNextOptionId())
-                    // Prevent page scroll
-                    event.preventDefault()
+                    event.preventDefault() // Prevent page scroll
+                    if (showCommandPalette) {
+                        focusOption(getNextOptionId())
+                    } else if (input.trim().length > 0) {
+                        setShowCommandPalette(true)
+                    }
                 } else if (event.key === 'ArrowUp' && selectedOptionId === null) {
-                    closeCommandPalette()
-                    onFocusPreviousBlock()
-                    // Prevent page scroll
-                    event.preventDefault()
+                    event.preventDefault() // Prevent page scroll
+                    if (onFocusPreviousBlock) {
+                        onFocusPreviousBlock()
+                        closeCommandPalette()
+                    }
+                    if (input.trim().length === 0) {
+                        onDeselected?.()
+                    }
                 } else if (event.key === 'ArrowUp') {
                     const previousOptionId = getPreviousOptionId()
                     focusOption(previousOptionId)
@@ -102,19 +114,13 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
                     event.preventDefault()
                 } else if (event.key === 'Escape') {
                     closeCommandPalette()
+                    onDeselected?.()
                 }
                 // Stop other notebook event handlers reacting to the input.
                 event.stopPropagation()
                 event.nativeEvent.stopImmediatePropagation()
             },
-            [
-                selectedOptionId,
-                focusOption,
-                getNextOptionId,
-                onFocusPreviousBlock,
-                getPreviousOptionId,
-                closeCommandPalette,
-            ]
+            [selectedOptionId, showCommandPalette, focusOption, getNextOptionId, closeCommandPalette, input, onFocusPreviousBlock, getPreviousOptionId, onDeselected]
         )
 
         useEffect(() => {
@@ -126,9 +132,46 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
         }, [input, openCommandPalette, closeCommandPalette])
 
         useOnClickOutside(rootReference, closeCommandPalette)
+        useOnClickOutside(rootReference, () => {
+            onDeselected?.()
+        })
+
+        useEffect(() => {
+            inputReference.current?.focus()
+        }, [])
+
+        // useEffect(() => {
+        //     if (isFocused) {
+        //         inputReference.current?.focus()
+        //     } else {
+        //         inputReference.current?.blur()
+        //     }
+        // }, [isFocused])
+
+        // useEffect(() => {
+        //     if (isFocused) {
+        //         // focus input on first appearance
+        //         inputReference.current?.focus()
+        //         return
+        //      } 
+
+        //     inputReference.current?.blur()
+        //     if (selectedOptionId !== null) {
+        //         return
+        //     }
+        //     if (inputReference.current === document.activeElement) {
+        //         return
+        //     }
+        //     if (rootReference.current?.contains(document.activeElement)) {
+        //         return
+        //     }
+        //     // console.log('###', document.activeElement)
+        //     // setTimeout(() => onDeselected?.(), 2000)
+        //     onDeselected?.()
+        // }, [isFocused, onDeselected, selectedOptionId])
 
         return (
-            <div className={styles.root} ref={rootReference} data-testid="notebook-command-palette">
+            <div role="generic" className={styles.root} ref={rootReference} data-testid="notebook-command-palette">
                 <div className={styles.inputRow}>
                     <Input
                         ref={mergedInputReference}
@@ -139,7 +182,11 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
                         onChange={event => setInput(event.target.value)}
                         placeholder="Type something to get started, paste a file URL, or use / to open the command palette"
                         aria-label="Type something to get started, paste a file URL, or use / to open the command palette"
-                        onFocus={openCommandPalette}
+                        onFocus={() => {
+                            setFocused(true)
+                            openCommandPalette()
+                        }}
+                        onBlur={() => setFocused(false)}
                         data-testid="command-palette-input"
                     />
                     {!showCommandPalette && <NotebookAddBlockButtons index={index} onAddBlock={onAddBlock} />}
@@ -169,3 +216,5 @@ export const NotebookCommandPaletteInput = React.forwardRef<HTMLInputElement, No
         )
     }
 )
+
+NotebookCommandPaletteInput.displayName = 'NotebookCommandPaletteInput'

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, useMap } from 'react'
 
 import { mdiPlayCircleOutline, mdiDownload, mdiContentCopy } from '@mdi/js'
 import classNames from 'classnames'
@@ -76,7 +76,6 @@ function countBlockTypes(blocks: Block[]): BlockCounts {
         query: 0,
         compute: 0,
         symbol: 0,
-        undecided: 0,
     })
 }
 
@@ -128,8 +127,20 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
 
         const notebookElement = useRef<HTMLDivElement | null>(null)
         const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+        const [blockAdders, setBlockAdders] = useState<Set<number>>(new Set())
+        // const addBlockAdder = (idx: number): void => setBlockAdders(new Set(blockAdders).add(idx))
+        // const removeBlockAdder = (idx: number): void => setBlockAdders(new Set([...blockAdders].filter(elem => elem !== idx)))
+        // const [blockAdders, setBlockAdders] = useState<Map<number, void>>(new Map())
+        // const addBlockAdder = (idx: number): void => setBlockAdders(new Map(...blockAdders, [idx, null]))
+        // const removeBlockAddr = (idx: number): void => {
+        //     const m = new Map(...blockAddrs)
+        //     m.delete(idx)
+        //     setBlockAdders(m)
+        // }
+
         const [blocks, setBlocks] = useState<Block[]>(notebook.getBlocks())
         const commandPaletteInputReference = useRef<HTMLInputElement>(null)
+        const floatingCommandPaletteInputReference = useRef<HTMLInputElement>(null)
         const debouncedOnSerializeBlocks = useMemo(() => debounce(onSerializeBlocks, 400), [onSerializeBlocks])
 
         const updateBlocks = useCallback(
@@ -234,45 +245,36 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
             [notebook, updateBlocks]
         )
 
-        const onAddUndecidedBlockBelow = useCallback(
+        const onAddProtoBlock = useCallback(
             (id: string) => {
                 if (isReadOnly) {
                     return
                 }
-
-                let blockIndex = blocks.length
-                for (let idx = 0; idx < blocks.length; idx++) {
-                    if (blocks[idx].id === id) {
-                        blockIndex = idx + 1
-                        break
-                    }
-                }
-                const addedBlock = notebook.insertBlockAtIndex(blockIndex, { type: 'undecided', input: '' })
-                selectBlock(addedBlock.id)
-                updateBlocks()
-                // telemetryService.log('SearchNotebookAddUndecidedBlockBelow', { type: addedBlock.type }, { type: addedBlock.type })
+                const idx = notebook.getBlockIndex(id)
+                setBlockAdders(blockAdders => new Set(blockAdders).add(idx + 1))
+                selectBlock(null)
             },
-            [notebook, isReadOnly, /* telemetryService, */ updateBlocks, selectBlock, blocks]
+            [isReadOnly, notebook, selectBlock]
         )
 
-        const onSetUndecidedBlock = useCallback(
-            (id: string, blockInput: BlockInput) => {
+        const onDismissAddProtoBlock = useCallback( // TODO: rename
+            () => {
                 if (isReadOnly) {
                     return
                 }
-
-                console.log('############ onSetUndecidedBlock')
-
-                const idx = notebook.getBlockIndex(id)
-                const newBlock = notebook.insertBlockAtIndex(idx, blockInput)
-                notebook.deleteBlockById(id)
-                selectBlock(newBlock.id)
-                focusBlock(newBlock.id)
+                if (notebook.getBlocks().length === 0) {
+                    return
+                }
+                let blockToSelectIndex = 0
+                for (const val of blockAdders) {
+                    blockToSelectIndex = val - 1
+                    break;
+                }
+                selectBlock(notebook.getBlocks()[blockToSelectIndex].id)
+                setBlockAdders(new Set())
                 updateBlocks()
-
-                // TODO: telemetry
-            },
-            [notebook, isReadOnly, selectBlock, updateBlocks, focusBlock]
+                
+            }, [isReadOnly, notebook, selectBlock, updateBlocks, blockAdders]
         )
 
         const onAddBlock = useCallback(
@@ -288,6 +290,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                     notebook.runBlockById(addedBlock.id)
                 }
                 selectBlock(addedBlock.id)
+                setBlockAdders(new Set())
                 updateBlocks()
 
                 telemetryService.log('SearchNotebookAddBlock', { type: addedBlock.type }, { type: addedBlock.type })
@@ -339,7 +342,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 if (isReadOnly) {
                     return
                 }
-
+    
                 const duplicateBlock = notebook.duplicateBlockById(id)
                 if (duplicateBlock) {
                     selectBlock(duplicateBlock.id)
@@ -372,17 +375,20 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 notebook,
                 selectedBlockId,
                 commandPaletteInputReference,
+                floatingCommandPaletteInputReference,
                 isReadOnly,
                 selectBlock,
                 onMoveBlock,
                 onRunBlock,
                 onDeleteBlock,
                 onDuplicateBlock,
+                onAddProtoBlock,
             }),
             [
                 notebook,
                 onDeleteBlock,
                 onDuplicateBlock,
+                onAddProtoBlock,
                 onMoveBlock,
                 onRunBlock,
                 selectedBlockId,
@@ -455,14 +461,14 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                     onRunBlock,
                     onBlockInputChange,
                     onDeleteBlock,
-                    onAddUndecidedBlockBelow,
+                    onAddProtoBlock,
                     onAddBlock,
                     onMoveBlock,
                     onDuplicateBlock,
                     isLightTheme,
                     isReadOnly,
                     isSelected: selectedBlockId === block.id,
-                    isOtherBlockSelected: selectedBlockId !== null && selectedBlockId !== block.id,
+                    isOtherBlockSelected: (selectedBlockId !== null && selectedBlockId !== block.id) || (blockAdders.size > 0),
                 }
 
                 switch (block.type) {
@@ -517,7 +523,8 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                             <NotebookUndecidedBlock
                                 {...block}
                                 {...blockProps}
-                                onSetUndecidedBlock = {onSetUndecidedBlock}
+                                index={index}
+                                onAddBlock={onAddBlock}
                             />
                             // // TODO:NEXT: (maybe) add a NotebookUndecidedBlock class mimicking NotebookAddBlockButtons
                             // <NotebookAddBlockButtons onAddBlock={onAddBlock} index={index} />
@@ -528,8 +535,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 onRunBlock,
                 onBlockInputChange,
                 onDeleteBlock,
-                onAddUndecidedBlockBelow,
-                onSetUndecidedBlock,
+                onAddProtoBlock,
                 onAddBlock,
                 onMoveBlock,
                 onDuplicateBlock,
@@ -547,6 +553,7 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 settingsCascade,
                 platformContext,
                 authenticatedUser,
+                blockAdders,
             ]
         )
 
@@ -611,8 +618,12 @@ export const NotebookComponent: React.FunctionComponent<React.PropsWithChildren<
                 </div>
                 {blocks.map((block, blockIndex) => (
                     <div key={block.id}>
-                        {/* MARK */}
-                        {/* <NotebookBlockSeparator isReadOnly={isReadOnly} index={blockIndex} onAddBlock={onAddBlock} /> */}
+                        {blockAdders.has(blockIndex) && <NotebookCommandPaletteInput
+                            ref={floatingCommandPaletteInputReference}
+                            index={blockIndex}
+                            onAddBlock={onAddBlock}
+                            onDeselected={onDismissAddProtoBlock} // TODO: onSuggestDismissal
+                        />}
                         {renderBlock(block, blockIndex)}
                     </div>
                 ))}

@@ -1,4 +1,5 @@
-import React, { useCallback } from 'react'
+import { NotebookCommandPaletteInput } from './NotebookCommandPaletteInput'
+import React, { useCallback, useRef } from 'react'
 
 import { mdiLanguageMarkdownOutline, mdiMagnify, mdiCodeTags, mdiFunction, mdiLaptop } from '@mdi/js'
 
@@ -28,6 +29,7 @@ export const NotebookAddBlockButtons: React.FunctionComponent<
             <Tooltip content="Add Markdown text">
                 <Button
                     className={styles.addBlockButton}
+                    onMouseDown={evt => evt.preventDefault()}
                     onClick={() => addBlock({ type: 'md', input: { text: '', initialFocusInput: true } })}
                     data-testid="add-md-block"
                     aria-label="Add markdown"
@@ -84,7 +86,8 @@ export const NotebookAddBlockButtons: React.FunctionComponent<
 
 interface NotebookUndecidedBlockProps extends BlockProps<UndecidedBlock>, ThemeProps {
     isEmbedded?: boolean
-    onSetUndecidedBlock: (id: string, blockInput: BlockInput) => void
+    index: number
+    onAddBlock: (index: number, blockInput: BlockInput) => void
 }
 
 // UndecidedBlock component
@@ -93,22 +96,20 @@ export const NotebookUndecidedBlock: React.FunctionComponent<
 > = React.memo(
     ({
         id,
-        onSetUndecidedBlock,
-        ...props
+        index,
+        onAddBlock,
     }) => {
-        const setUndecided = useCallback((id: string, blockInput: BlockInput) => onSetUndecidedBlock(id, blockInput), [onSetUndecidedBlock])
-        // NEXT: Add other tooltips here
+        const inputRef = useRef<HTMLInputElement>(null)
+
         return (
-            <Tooltip content="Add Markdown text">
-                <Button
-                    className={styles.addBlockButton}
-                    onClick={() => setUndecided(id, { type: 'md', input: { text: '', initialFocusInput: true } })}
-                    data-testid="add-md-block"
-                    aria-label="Add markdown"
-                >
-                    <Icon aria-hidden={true} size="sm" svgPath={mdiLanguageMarkdownOutline} />
-                </Button>
-            </Tooltip>
+            <NotebookCommandPaletteInput
+                ref={inputRef}
+                index={index}
+                onAddBlock={onAddBlock}
+                onFocusPreviousBlock={() => null} // TODO
+            />
         )
     }
 )
+
+NotebookUndecidedBlock.displayName = 'NotebookUndecidedBlock'

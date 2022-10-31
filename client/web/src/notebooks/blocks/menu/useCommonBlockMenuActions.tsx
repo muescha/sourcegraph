@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { mdiContentDuplicate, mdiArrowUp, mdiArrowDown, mdiDelete, mdiArrowLeftBottomBold } from '@mdi/js'
+import { mdiContentDuplicate, mdiArrowUp, mdiArrowDown, mdiDelete, mdiPlusCircleOutline } from '@mdi/js'
 
 import { isMacPlatform as isMacPlatformFunc } from '@sourcegraph/common'
 import { Icon } from '@sourcegraph/wildcard'
@@ -16,9 +16,9 @@ export const useCommonBlockMenuActions = ({
     isReadOnly,
     onMoveBlock,
     onDeleteBlock,
-    onAddUndecidedBlockBelow,
+    onAddProtoBlock,
     onDuplicateBlock,
-}: Pick<BlockProps, 'id' | 'isReadOnly' | 'onDeleteBlock' | 'onDuplicateBlock' | 'onMoveBlock' | 'onAddUndecidedBlockBelow'>): BlockMenuAction[] => {
+}: Pick<BlockProps, 'id' | 'isReadOnly' | 'onDeleteBlock' | 'onDuplicateBlock' | 'onMoveBlock' | 'onAddProtoBlock'>): BlockMenuAction[] => {
     const isMacPlatform = useMemo(() => isMacPlatformFunc(), [])
     const modifierKeyLabel = useModifierKeyLabel()
     const isInputFocused = useIsBlockInputFocused(id)
@@ -58,10 +58,10 @@ export const useCommonBlockMenuActions = ({
             {
                 type: 'button',
                 label: 'Add block below',
-                icon: <Icon aria-hidden={true} svgPath={mdiArrowLeftBottomBold} />,
-                onClick: onAddUndecidedBlockBelow,
-                keyboardShortcutLabel: !isInputFocused ? (isMacPlatform ? '⌘ + ↑ + =' : '+') : '',
+                icon: <Icon aria-hidden={true} svgPath={mdiPlusCircleOutline} />,
+                onClick: onAddProtoBlock,
+                keyboardShortcutLabel: !isInputFocused ? `${modifierKeyLabel} + ⇧ + ↵` : '',
             },
         ]
-    }, [isReadOnly, isMacPlatform, isInputFocused, modifierKeyLabel, onMoveBlock, onDeleteBlock, onDuplicateBlock, onAddUndecidedBlockBelow])
+    }, [isReadOnly, isMacPlatform, isInputFocused, modifierKeyLabel, onMoveBlock, onDeleteBlock, onDuplicateBlock, onAddProtoBlock])
 }
