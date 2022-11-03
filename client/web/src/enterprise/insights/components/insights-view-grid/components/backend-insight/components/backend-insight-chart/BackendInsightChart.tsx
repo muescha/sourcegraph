@@ -1,10 +1,23 @@
-import React, { FC, useMemo } from 'react'
+import React, { FC, MouseEvent, useCallback, useMemo, useState } from 'react'
 
+import { mdiAlertCircle } from '@mdi/js'
 import { ParentSize } from '@visx/responsive'
 import classNames from 'classnames'
 import useResizeObserver from 'use-resize-observer'
 
-import { BarChart, ScrollBox, LegendList, LegendItem, Series } from '@sourcegraph/wildcard'
+import {
+    BarChart,
+    Button,
+    Icon,
+    LegendItem,
+    LegendList,
+    Link,
+    ScrollBox,
+    Series,
+    Tooltip,
+    TooltipOpenEvent,
+    TooltipOpenEventReason
+} from '@sourcegraph/wildcard'
 
 import { UseSeriesToggleReturn } from '../../../../../../../../insights/utils/use-series-toggle'
 import { BackendInsightData, InsightContent } from '../../../../../../core'
@@ -96,7 +109,7 @@ export function BackendInsightChart<Datum>(props: BackendInsightChartProps<Datum
                                         onDatumClick={onDatumClick}
                                         zeroYAxisMin={zeroYAxisMin}
                                         seriesToggleState={seriesToggleState}
-                                        {...data.content}
+                                        series={data.content.series}
                                     />
                                 ) : (
                                     <BarChart
@@ -172,8 +185,58 @@ const SeriesLegends: FC<SeriesLegendsProps> = props => {
                     onMouseEnter={() => setHoveredId(`${item.id}`)}
                     // prevent accidental dragging events
                     onMouseDown={event => event.stopPropagation()}
-                />
+                >
+                    {item.name}
+                    <BackendInsightTimoutIcon/>
+                </LegendItem>
             ))}
         </LegendList>
+    )
+}
+
+/**
+ * Renders timeout icon and interactive tooltip with addition info about timeout
+ * error. Note: It's exported because it's also used in the backend insight card.
+ */
+export const BackendInsightTimoutIcon: FC = () => {
+    const [open, setOpen] = useState(false)
+
+    const handleIconClick = (event: MouseEvent<HTMLButtonElement>): void => {
+        // Catch event and prevent bubbling in order to prevent series toggle on/off
+        // series action.
+        event.stopPropagation()
+        setOpen(!open)
+    }
+
+    const handleOpenChange = useCallback((event: TooltipOpenEvent): void => {
+        switch (event.reason) {
+            case TooltipOpenEventReason.Esc:
+            case TooltipOpenEventReason.ClickOutside: {
+                setOpen(event.isOpen)
+            }
+        }
+    }, [])
+
+    return (
+        <Tooltip
+            open={open}
+            content={
+                <>
+                    Calculating some points on this insight exceeded the timeout limit. Results may be incomplete.{' '}
+                    <Link to="/" target="_blank" rel="noopener">
+                        Troubleshoot
+                    </Link>
+                </>
+            }
+            onOpenChange={handleOpenChange}
+        >
+            <Button variant='icon' className={styles.timeoutIcon} onClick={handleIconClick}>
+                <Icon
+                    aria-label="Insight is timeout"
+                    svgPath={mdiAlertCircle}
+                    color='var(--icon-color)'
+                />
+            </Button>
+        </Tooltip>
     )
 }
