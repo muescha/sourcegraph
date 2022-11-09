@@ -24,7 +24,7 @@ import { useExperimentalFeatures } from '../../stores'
 import { BlobInfo, BlobProps, updateBrowserHistoryIfChanged } from './Blob'
 import { blobPropsFacet } from './codemirror'
 import { showGitBlameDecorations } from './codemirror/blame-decorations'
-import { syntaxHighlight } from './codemirror/highlight'
+import { lsifData } from './codemirror/highlight'
 import { pin, updatePin } from './codemirror/hovercard'
 import { selectLines, selectableLineNumbers, SelectedLineRange } from './codemirror/linenumbers'
 import { search } from './codemirror/search'
@@ -183,7 +183,7 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
                       preloadGoToDefinition,
                   })
                 : [],
-            syntaxHighlight.of(blobInfo),
+            lsifData.of(blobInfo),
             pin.init(() => (hasPin ? position : null)),
             extensionsController !== null && !navigateToLineOnAnyClick
                 ? sourcegraphExtensions({
