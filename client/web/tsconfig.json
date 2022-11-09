@@ -9,6 +9,9 @@
     "jsx": "react-jsx",
     "rootDir": ".",
     "outDir": "out",
+    "types": [
+      "../../node_modules/user-agent-data-types"
+    ]
   },
   "references": [
     { "path": "../shared" },
