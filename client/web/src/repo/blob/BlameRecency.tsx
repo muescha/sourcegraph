@@ -40,8 +40,7 @@ export function useBlameRecencyColor(
 
     // We should probably not use a linear scale here :shrug:
     const recency = Math.min(Math.max((now - commit.getTime()) / (now - start), 0), 1)
-
-    return colors[Math.round(recency * 10) - 1]
+    return colors[10 - Math.ceil(recency * 10)]
 }
 
 export function BlameRecencyLegend(): JSX.Element {
@@ -54,21 +53,19 @@ export function BlameRecencyLegend(): JSX.Element {
             <Text size="small" className="m-0 text-muted mr-1">
                 Oldest
             </Text>
-            {colors
-                .slice(0)
-                .reverse()
-                .map(color => (
-                    <div
-                        style={{
-                            width: 5,
-                            height: '1rem',
-                            backgroundColor: color,
-                            marginLeft: 1,
-                            marginRight: 1,
-                            borderRadius: 1,
-                        }}
-                    ></div>
-                ))}
+            {colors.map(color => (
+                <div
+                    key={color}
+                    style={{
+                        width: 5,
+                        height: '1rem',
+                        backgroundColor: color,
+                        marginLeft: 1,
+                        marginRight: 1,
+                        borderRadius: 1,
+                    }}
+                ></div>
+            ))}
             <Text size="small" className="m-0 text-muted ml-1">
                 Newest
             </Text>
