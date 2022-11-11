@@ -22,6 +22,7 @@ interface BlameHunkDisplayInfo {
     timestampString: string
     linkURL: string
     message: string
+    commitDate: Date
 }
 
 export type BlameHunk = NonNullable<
@@ -86,14 +87,16 @@ const getDisplayInfoFromHunk = (
 ): BlameHunkDisplayInfo => {
     const displayName = truncate(author.person.displayName, { length: 25 })
     const username = author.person.user ? `(${author.person.user.username}) ` : ''
-    const dateString = formatDistanceStrict(new Date(author.date), now, { addSuffix: true })
-    const timestampString = new Date(author.date).toLocaleString()
+    const commitDate = new Date(author.date)
+    const dateString = formatDistanceStrict(commitDate, now, { addSuffix: true })
+    const timestampString = commitDate.toLocaleString()
     const linkURL = new URL(commit.url, sourcegraphURL).href
     const content = `${dateString} • ${username}${displayName} [${truncate(message, { length: 45 })}]`
 
     return {
         displayName,
         username,
+        commitDate,
         dateString,
         timestampString,
         linkURL,

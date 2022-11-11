@@ -59,6 +59,7 @@ import { BlobPanel } from './panel/BlobPanel'
 import { RenderedFile } from './RenderedFile'
 
 import styles from './BlobPage.module.scss'
+import { BlameRecencyLegend } from './BlameRecency'
 
 const SEARCH_NOTEBOOK_FILE_EXTENSION = '.snb.md'
 const RenderedNotebookMarkdown = lazyComponent(() => import('./RenderedNotebookMarkdown'), 'RenderedNotebookMarkdown')
@@ -345,6 +346,15 @@ export const BlobPage: React.FunctionComponent<React.PropsWithChildren<BlobPageP
     const alwaysRender = (
         <>
             <PageTitle title={getPageTitle()} />
+            {isBlameVisible && (
+                <RepoHeaderContributionPortal
+                    position="left"
+                    id="blame-recency"
+                    repoHeaderContributionsLifecycleProps={props.repoHeaderContributionsLifecycleProps}
+                >
+                    {() => <BlameRecencyLegend />}
+                </RepoHeaderContributionPortal>
+            )}
             <RepoHeaderContributionPortal
                 position="right"
                 priority={20}

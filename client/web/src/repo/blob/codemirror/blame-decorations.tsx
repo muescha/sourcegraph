@@ -57,6 +57,7 @@ class BlameDecoratorMarker extends GutterMarker {
     constructor(
         public view: EditorView,
         public readonly hunk: BlameHunk | undefined,
+        private isFirstInHunk: boolean = false,
         private isSpacer: boolean = false
     ) {
         super()
@@ -78,6 +79,7 @@ class BlameDecoratorMarker extends GutterMarker {
                      * hovering over the line associated with this hunk
                      */
                     line={this.isSpacer ? 0 : this.hunk?.startLine ?? 0}
+                    isFirstInHunk={this.isFirstInHunk}
                     blameHunk={this.hunk}
                     onSelect={this.selectRow}
                     onDeselect={this.deselectRow}
@@ -120,18 +122,18 @@ export const showGitBlameDecorations = Facet.define<BlameHunk[], BlameHunk[]>({
                     return null
                 }
                 const lineNumber: number = view.state.doc.lineAt(lineBlock.from).number
-                const hunk = hunks.find(hunk => hunk.startLine === lineNumber)
+                const hunk = hunks.find(hunk => lineNumber >= hunk.startLine && lineNumber < hunk.endLine)
                 if (!hunk) {
                     return null
                 }
-                return new BlameDecoratorMarker(view, hunk)
+                return new BlameDecoratorMarker(view, hunk, hunk.startLine === lineNumber)
             },
             // Without a spacer the whole gutter flickers when the
             // decorations for the visible lines are re-rendered
             // TODO: update spacer when decorations change
             initialSpacer: view => {
                 const hunk = longestColumnDecorations(view.state.facet(facet))
-                return new BlameDecoratorMarker(view, hunk, true)
+                return new BlameDecoratorMarker(view, hunk, true, true)
             },
             // Markers need to be updated when theme changes
             lineMarkerChange: update =>

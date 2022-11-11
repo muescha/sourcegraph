@@ -19,6 +19,8 @@ import {
 import { eventLogger } from '../../tracking/eventLogger'
 import { BlameHunk } from '../blame/useBlameHunks'
 
+import { useBlameRecencyColor } from './BlameRecency'
+
 import styles from './BlameDecoration.module.scss'
 
 const currentPopoverId = new BehaviorSubject<string | null>(null)
@@ -104,9 +106,10 @@ const usePopover = ({
 export const BlameDecoration: React.FunctionComponent<{
     line: number // 1-based line number
     blameHunk?: BlameHunk
+    isFirstInHunk: boolean
     onSelect?: (line: number) => void
     onDeselect?: (line: number) => void
-}> = ({ line, blameHunk, onSelect, onDeselect }) => {
+}> = ({ line, blameHunk, isFirstInHunk, onSelect, onDeselect }) => {
     const id = line?.toString() || ''
     const onOpen = useCallback(() => {
         onSelect?.(line)
@@ -119,6 +122,7 @@ export const BlameDecoration: React.FunctionComponent<{
         onOpen,
         onClose,
     })
+    const recencyColor = useBlameRecencyColor(blameHunk?.displayInfo.commitDate)
 
     const onPopoverOpenChange = useCallback((event: PopoverOpenEvent) => (event.isOpen ? close() : open()), [
         close,
@@ -130,59 +134,64 @@ export const BlameDecoration: React.FunctionComponent<{
     }
 
     return (
-        <Popover isOpen={isOpen} onOpenChange={onPopoverOpenChange} key={id}>
-            <PopoverTrigger
-                as={Link}
-                to={blameHunk.displayInfo.linkURL}
-                target="_blank"
-                rel="noreferrer noopener"
-                className={classNames(styles.popoverTrigger, 'px-2')}
-                onFocus={open}
-                onBlur={close}
-                onMouseEnter={openWithTimeout}
-                onMouseLeave={closeWithTimeout}
-            >
-                <span
-                    className={styles.content}
-                    data-line-decoration-attachment-content={true}
-                    data-contents={blameHunk.displayInfo.message}
-                />
-            </PopoverTrigger>
-
-            <PopoverContent
-                constraintPadding={createRectangle(150, 0, 0, 0)}
-                position={Position.topStart}
-                focusLocked={false}
-                returnTargetFocus={false}
-                onMouseEnter={resetAllTimeouts}
-                onMouseLeave={close}
-                className={styles.popoverContent}
-            >
-                <div className="py-1">
-                    <div className={classNames(styles.head, 'px-3 my-2')}>
-                        <span className={styles.author}>{blameHunk.displayInfo.displayName}</span>{' '}
-                        {blameHunk.displayInfo.timestampString}
-                    </div>
-                    <hr className={classNames(styles.separator, 'm-0')} />
-                    <div className={classNames('px-3 d-flex align-items-center', styles.body)}>
-                        <Icon
-                            aria-hidden={true}
-                            as={SourceCommitIcon}
-                            className={classNames('mr-2 flex-shrink-0', styles.icon)}
+        <div className={classNames(styles.blame)}>
+            <div className={classNames(styles.recency)} style={{ backgroundColor: recencyColor }} />
+            {isFirstInHunk ? (
+                <Popover isOpen={isOpen} onOpenChange={onPopoverOpenChange} key={id}>
+                    <PopoverTrigger
+                        as={Link}
+                        to={blameHunk.displayInfo.linkURL}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className={classNames(styles.popoverTrigger, 'px-2')}
+                        onFocus={open}
+                        onBlur={close}
+                        onMouseEnter={openWithTimeout}
+                        onMouseLeave={closeWithTimeout}
+                    >
+                        <span
+                            className={styles.content}
+                            data-line-decoration-attachment-content={true}
+                            data-contents={blameHunk.displayInfo.message}
                         />
-                        <Link
-                            to={blameHunk.displayInfo.linkURL}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className={styles.link}
-                            onClick={logCommitClick}
-                        >
-                            {blameHunk.message}
-                        </Link>
-                    </div>
-                </div>
-            </PopoverContent>
-        </Popover>
+                    </PopoverTrigger>
+
+                    <PopoverContent
+                        constraintPadding={createRectangle(150, 0, 0, 0)}
+                        position={Position.topStart}
+                        focusLocked={false}
+                        returnTargetFocus={false}
+                        onMouseEnter={resetAllTimeouts}
+                        onMouseLeave={close}
+                        className={styles.popoverContent}
+                    >
+                        <div className="py-1">
+                            <div className={classNames(styles.head, 'px-3 my-2')}>
+                                <span className={styles.author}>{blameHunk.displayInfo.displayName}</span>{' '}
+                                {blameHunk.displayInfo.timestampString}
+                            </div>
+                            <hr className={classNames(styles.separator, 'm-0')} />
+                            <div className={classNames('px-3 d-flex align-items-center', styles.body)}>
+                                <Icon
+                                    aria-hidden={true}
+                                    as={SourceCommitIcon}
+                                    className={classNames('mr-2 flex-shrink-0', styles.icon)}
+                                />
+                                <Link
+                                    to={blameHunk.displayInfo.linkURL}
+                                    target="_blank"
+                                    rel="noreferrer noopener"
+                                    className={styles.link}
+                                    onClick={logCommitClick}
+                                >
+                                    {blameHunk.message}
+                                </Link>
+                            </div>
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            ) : null}
+        </div>
     )
 }
 

@@ -1,10 +1,20 @@
+.blame{
+    display: flex;
+    height: 100%;
+}
+
+.recency {
+    height: 100%;
+    flex: 0 0 5px;
+}
+
 .popover {
     &-trigger {
         overflow: hidden;
         text-overflow: ellipsis;
-        display: inline-block;
-        width: 100%;
-        max-width: 240px;
+
+        width: calc(100% - 5px);
+        max-width: calc(240px - 5px);
 
         color: var(--body-color);
         &:hover {
