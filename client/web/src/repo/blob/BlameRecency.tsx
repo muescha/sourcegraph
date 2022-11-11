@@ -22,7 +22,7 @@ export function useBlameRecencyColor(
     creation?: Date
 ): string {
     // @TODO: Pass through the actual flag
-    const isLightTheme = false
+    const isLightTheme = true
     const colors = isLightTheme ? COLORS : DARK_COLORS
 
     if (!commit) {
@@ -45,7 +45,7 @@ export function useBlameRecencyColor(
 
 export function BlameRecencyLegend(): JSX.Element {
     // @TODO: Pass through the actual flag
-    const isLightTheme = false
+    const isLightTheme = true
     const colors = isLightTheme ? COLORS : DARK_COLORS
 
     return (

@@ -1,6 +1,7 @@
 .blame{
     display: flex;
     height: 100%;
+    user-select: none;
 }
 
 .recency {
@@ -16,9 +17,29 @@
         width: calc(100% - 5px);
         max-width: calc(240px - 5px);
 
+        display: flex;
+        flex-wrap: nowrap;
+
         color: var(--body-color);
         &:hover {
             color: var(--body-color);
+        }
+
+        .date {
+            white-space: pre;
+            color: var(--text-muted);
+            font-family: var(--font-family-base);
+        }
+
+        .avatar, {
+            min-width: 1rem;
+            width: 1rem;
+            min-height: 1rem;
+            height: 1rem;
+        }
+
+        .date {
+            min-width: 80px;
         }
 
         .content {
@@ -26,9 +47,6 @@
             color: var(--text-muted);
             font-family: var(--font-family-base);
 
-            &::before {
-                content: attr(data-contents);
-            }
         }
     }
 

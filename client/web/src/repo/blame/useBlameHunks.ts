@@ -52,7 +52,10 @@ const fetchBlame = memoizeObservable(
                                         person {
                                             email
                                             displayName
+                                            avatarURL
                                             user {
+                                                displayName
+                                                avatarURL
                                                 username
                                             }
                                         }
@@ -88,10 +91,10 @@ const getDisplayInfoFromHunk = (
     const displayName = truncate(author.person.displayName, { length: 25 })
     const username = author.person.user ? `(${author.person.user.username}) ` : ''
     const commitDate = new Date(author.date)
-    const dateString = formatDistanceStrict(commitDate, now, { addSuffix: true })
+    const dateString = formatDateForBlame(commitDate, now)
     const timestampString = commitDate.toLocaleString()
     const linkURL = new URL(commit.url, sourcegraphURL).href
-    const content = `${dateString} • ${username}${displayName} [${truncate(message, { length: 45 })}]`
+    const content = truncate(message, { length: 45 })
 
     return {
         displayName,
@@ -135,4 +138,15 @@ export const useBlameHunks = (
     }, [hunks, sourcegraphURL])
 
     return hunksWithDisplayInfo
+}
+
+const ONE_MONTH = 30 * 24 * 60 * 60 * 1000
+function formatDateForBlame(commitDate: Date, now: number): string {
+    if (now - commitDate.getTime() < ONE_MONTH) {
+        return formatDistanceStrict(commitDate, now, { addSuffix: true })
+    }
+    if (commitDate.getFullYear() === new Date(now).getFullYear()) {
+        return commitDate.toLocaleString('default', { month: 'short', day: 'numeric' })
+    }
+    return commitDate.toLocaleString('default', { year: 'numeric', month: 'short', day: 'numeric' })
 }

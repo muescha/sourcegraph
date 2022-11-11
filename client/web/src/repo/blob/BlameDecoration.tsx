@@ -17,6 +17,7 @@ import {
 } from '@sourcegraph/wildcard'
 
 import { eventLogger } from '../../tracking/eventLogger'
+import { UserAvatar } from '../../user/UserAvatar'
 import { BlameHunk } from '../blame/useBlameHunks'
 
 import { useBlameRecencyColor } from './BlameRecency'
@@ -132,15 +133,20 @@ export const BlameDecoration: React.FunctionComponent<{
     if (!blameHunk) {
         return null
     }
+    const displayInfo = blameHunk.displayInfo
 
     return (
         <div className={classNames(styles.blame)}>
-            <div className={classNames(styles.recency)} style={{ backgroundColor: recencyColor }} />
+            <div
+                className={classNames(styles.recency)}
+                // eslint-disable-next-line react/forbid-dom-props
+                style={{ backgroundColor: recencyColor }}
+            />
             {isFirstInHunk ? (
                 <Popover isOpen={isOpen} onOpenChange={onPopoverOpenChange} key={id}>
                     <PopoverTrigger
                         as={Link}
-                        to={blameHunk.displayInfo.linkURL}
+                        to={displayInfo.linkURL}
                         target="_blank"
                         rel="noreferrer noopener"
                         className={classNames(styles.popoverTrigger, 'px-2')}
@@ -149,11 +155,22 @@ export const BlameDecoration: React.FunctionComponent<{
                         onMouseEnter={openWithTimeout}
                         onMouseLeave={closeWithTimeout}
                     >
-                        <span
-                            className={styles.content}
-                            data-line-decoration-attachment-content={true}
-                            data-contents={blameHunk.displayInfo.message}
-                        />
+                        <span className={styles.date} data-line-decoration-attachment-content={true}>
+                            {displayInfo.dateString}
+                        </span>
+                        <span className={styles.content} data-line-decoration-attachment-content={true}>
+                            {blameHunk.author.person ? (
+                                <UserAvatar
+                                    inline={true}
+                                    className={classNames('mx-1', styles.avatar)}
+                                    user={blameHunk.author.person}
+                                    width="1rem"
+                                />
+                            ) : (
+                                `${displayInfo.username}${displayInfo.displayName}`
+                            )}
+                            {` ${displayInfo.message}`}
+                        </span>
                     </PopoverTrigger>
 
                     <PopoverContent
