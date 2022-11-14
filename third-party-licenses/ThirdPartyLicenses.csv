@@ -119,6 +119,7 @@ Go,github.com/gobwas/glob,v0.2.3,MIT,github.com/gobwas/glob,Approved
 Go,github.com/godbus/dbus/v5,v5.0.6,Simplified BSD,github.com/godbus/dbus,Approved
 Go,github.com/gofrs/uuid,v4.2.0,MIT,github.com/gofrs/uuid,Approved
 Go,github.com/gogo/protobuf,v1.3.2,New BSD,github.com/gogo/protobuf,Approved
+Go,github.com/golang-jwt/jwt,v3.2.2,MIT,github.com/golang-jwt/jwt,Approved
 Go,github.com/golang-jwt/jwt/v4,v4.2.0,MIT,github.com/golang-jwt/jwt,Approved
 Go,github.com/golang/gddo,v0.0.0-20210115222349-20d68f94ee1f,New BSD,github.com/golang/gddo,Approved
 Go,github.com/golang/glog,v1.0.0,Apache 2.0,github.com/golang/glog,Approved
@@ -133,6 +134,7 @@ Go,github.com/google/go-github,v17.0.0,New BSD,github.com/google/go-github,Appro
 Go,github.com/google/go-github/v31,v31.0.0,New BSD,github.com/google/go-github,Approved
 Go,github.com/google/go-github/v41,v41.0.0,New BSD,github.com/google/go-github,Approved
 Go,github.com/google/go-github/v43,v43.0.0,New BSD,github.com/google/go-github,Approved
+Go,github.com/google/go-github/v47,v47.1.0,New BSD,github.com/google/go-github,Approved
 Go,github.com/google/go-querystring,v1.1.0,New BSD,github.com/google/go-querystring,Approved
 Go,github.com/google/gofuzz,v1.2.0,Apache 2.0,github.com/google/gofuzz,Approved
 Go,github.com/google/pprof,v0.0.0-20221010195024-131d412537ea,"Apache 2.0,ISC",github.com/google/pprof,Approved
@@ -281,13 +283,14 @@ Go,github.com/sourcegraph/gosaml2,v0.6.1-0.20210128133756-84151d087b10,Apache 2.
 Go,github.com/sourcegraph/httpgzip,v0.0.0-20211015085752-0bad89b3b4df,MIT,github.com/sourcegraph/httpgzip,Approved
 Go,github.com/sourcegraph/jsonx,v0.0.0-20200629203448-1a936bd500cf,MIT,github.com/sourcegraph/jsonx,Approved
 Go,github.com/sourcegraph/log,v0.0.0-20221006140640-7c567caa79cb,Apache 2.0,github.com/sourcegraph/log,Approved
+Go,github.com/sourcegraph/mountinfo,v0.0.0-20221027185101-272dd8baaf4a,Apache 2.0,github.com/sourcegraph/mountinfo,Approved
 Go,github.com/sourcegraph/oauth2,v0.0.0-20210825125341-77c1d99ece3c,New BSD,github.com/sourcegraph/oauth2,Approved
 Go,github.com/sourcegraph/otelsql,v0.0.0-20220905085252-74375c884fff,Apache 2.0,github.com/sourcegraph/otelsql,Approved
 Go,github.com/sourcegraph/run,v0.9.0,Apache 2.0,github.com/sourcegraph/run,Approved
 Go,github.com/sourcegraph/scip,v0.1.0,Apache 2.0,github.com/sourcegraph/scip,Approved
 Go,github.com/sourcegraph/syntaxhighlight,v0.0.0-20170531221838-bd320f5d308e,New BSD,github.com/sourcegraph/syntaxhighlight,Approved
 Go,github.com/sourcegraph/yaml,v1.0.1-0.20200714132230-56936252f152,MIT,github.com/sourcegraph/yaml,Approved
-Go,github.com/sourcegraph/zoekt,v0.0.0-20221101163612-fb9c22b1bdcc,Apache 2.0,github.com/sourcegraph/zoekt,Approved
+Go,github.com/sourcegraph/zoekt,v0.0.0-20221109142233-2e71aad6ac9a,Apache 2.0,github.com/sourcegraph/zoekt,Approved
 Go,github.com/stretchr/testify,v1.8.0,MIT,github.com/stretchr/testify,Approved
 Go,github.com/throttled/throttled/v2,v2.9.0,New BSD,github.com/throttled/throttled,Approved
 Go,github.com/tidwall/gjson,v1.14.0,MIT,github.com/tidwall/gjson,Approved
