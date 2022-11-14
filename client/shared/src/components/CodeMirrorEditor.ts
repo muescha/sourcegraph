@@ -217,6 +217,14 @@ export function editorHeight({
     })
 }
 
+export function editorLineHeight({ isBlameVisible }: { isBlameVisible: boolean }): Extension {
+    return EditorView.theme({
+        '.cm-line': {
+            lineHeight: isBlameVisible ? '1.5rem' : '1rem',
+        },
+    })
+}
+
 /**
  * Default editor theme (background color, text color, gutter color, etc)
  */
