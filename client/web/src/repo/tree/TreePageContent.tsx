@@ -32,6 +32,8 @@ import { TreeEntriesSection } from './TreeEntriesSection'
 
 import treeEntryStyles from './TreeEntriesSection.module.scss'
 import styles from './TreePage.module.scss'
+import { fetchBlob } from '../blob/backend'
+import { RenderedFile } from '../blob/RenderedFile'
 
 export type TreeCommitsRepositoryCommit = NonNullable<
     Extract<TreeCommitsResult['node'], { __typename: 'Repository' }>['commit']
@@ -180,44 +182,128 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
 
     const { extensionsController } = props
 
+
+
+    const richHTMLResults = useObservable(
+        useMemo(() => fetchBlob({
+            repoName: repo.name,
+            revision,
+            filePath: `${filePath}/README.md`,
+            disableTimeout: true,
+        }), [repo.name, revision, filePath])
+    )
+
+    const richHTML = richHTMLResults?.richHTML
+
+    // useCallback(() => {
+    //     fetchBlob({
+    //         repoName: repo.name,
+    //         revision,
+    //         filePath: `${filePath}/README.md`,
+    //         disableTimeout: true,
+    //     }).forEach()
+    // }, [repo.name, commitID, filePath, revision])
+
+
+    // const READMEFile: React.FunctionComponent<React.PropsWithChildren<unknown>> = () => (
+    //     <div>
+    //         {richHTML && richHTML !== 'loading' && (
+    //             <RenderedFile className="pt-0 pl-3" dangerousInnerHTML={richHTML} location={props.location} />
+    //         )}
+    //         {!richHTML && richHTML !== 'loading' && (
+    //             <div className="text-center mt-5">
+    //                 <img src="https://i.ibb.co/tztztYB/eric.png" alt="winner" className="mb-3 w-25" />
+    //                 <H2>No README available :)</H2>
+    //             </div>
+    //         )}
+    //         {blobInfoOrError && richHTML && aborted && (
+    //             <div>
+    //                 <Alert variant="info">
+    //                     Rendering this file took too long. &nbsp;
+    //                     <Button onClick={onExtendTimeoutClick} variant="primary" size="sm">
+    //                         Try again
+    //                     </Button>
+    //                 </Alert>
+    //             </div>
+    //         )}
+    //     </div>
+    // )
+
     return (
         <>
-            <div>README here</div>
-            <section className={classNames('test-tree-entries mb-3', styles.section)}>
-                <div>
-                    {tree.entries.map(entry => entry.isDirectory ? (<div>
-                        <Link
-                            to={entry.url}
-                            className={classNames(
-                                'test-page-file-decorable',
-                                treeEntryStyles.treeEntry,
-                                entry.isDirectory && 'font-weight-bold',
-                                `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`,
-                            )}
-                            title={entry.path}
-                            data-testid="tree-entry"
-                        >
-                            <div
-                                className={classNames(
-                                    'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
-                                )}
-                            >
-                                <span>
-                                    <Icon
-                                        className="mr-1"
-                                        svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
-                                        aria-hidden={true}
-                                    />
-                                    {entry.name}
-                                    {entry.isDirectory && '/'}
-                                </span>
-                                {/* {renderedFileDecorations} */}
+            <div>
+                {richHTML && richHTML !== 'loading' && (
+                    <div style={{
+                        maxHeight: '30rem',
+                        overflow: 'hidden',
+                        position: 'relative',
+                        // border: "5px solid red",
+                    }}>
+                        <RenderedFile className="pt-0 pl-3" dangerousInnerHTML={richHTML} location={props.location} />
+                        {/* <div style={{
+                            position: 'absolute',
+                            bottom: '0',
+                            left: '1rem',
+                            width: '100%',
+                            maxWidth: '50rem',
+                            height: ' 1.5rem',
+                            textAlign: 'center',
+                            backgroundImage: 'linear-gradient(to bottom, transparent, white)',
+                            verticalAlign: 'text-bottom',
+                        }}>
+                            <div style={{
+                                verticalAlign: 'text-bottom'
+                            }}>
+                                View more
                             </div>
-                        </Link>
-                    </div>) : (<div>
-                        {entry.name}
+                        </div> */}
                     </div>
-                        
+                )}
+            </div>
+            <div style={{
+                padding: '0 1rem'
+            }}><Link to="TODO">More...</Link></div>
+            <section style={{
+                marginTop: '1rem'
+            }} className={classNames('test-tree-entries mb-3', styles.section)}>
+                <div style={{
+                    margin: '0 1rem'
+                }}>
+                    {tree.entries.map(entry => entry.isDirectory ? (
+                        <div key={entry.name}>
+                            <Link
+                                to={entry.url}
+                                className={classNames(
+                                    'test-page-file-decorable',
+                                    treeEntryStyles.treeEntry,
+                                    entry.isDirectory && 'font-weight-bold',
+                                    `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`,
+                                )}
+                                title={entry.path}
+                                data-testid="tree-entry"
+                            >
+                                <div
+                                    className={classNames(
+                                        'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
+                                    )}
+                                >
+                                    <span>
+                                        <Icon
+                                            className="mr-1"
+                                            svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
+                                            aria-hidden={true}
+                                        />
+                                        {entry.name}
+                                        {entry.isDirectory && '/'}
+                                    </span>
+                                    {/* {renderedFileDecorations} */}
+                                </div>
+                            </Link>
+                        </div>
+                    ) : (
+                        <div key={entry.name}>
+                            {entry.name}
+                        </div>
                     ))}
                 </div>
 
