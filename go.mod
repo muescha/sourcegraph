@@ -229,7 +229,8 @@ require (
 )
 
 require (
-	github.com/sourcegraph/zoekt v0.0.0-20221115035648-7c7157a8dee4
+	// DONOTMERGE this is pointing at a PR https://github.com/sourcegraph/zoekt/pull/482
+	github.com/sourcegraph/zoekt v0.0.0-20221115191502-1adc34de5b0c
 	github.com/stretchr/objx v0.5.0 // indirect
 )
 
