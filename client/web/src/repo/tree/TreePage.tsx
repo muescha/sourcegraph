@@ -292,7 +292,7 @@ export const TreePage: React.FunctionComponent<React.PropsWithChildren<Props>> =
                     </ButtonGroup>
                 )}
             </div>
-            {isNewRepoPageEnabled ? (
+            {/* {isNewRepoPageEnabled ? (
                 <TreeTabList tree={tree} selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
             ) : (
                 <TreeNavigation
@@ -303,7 +303,7 @@ export const TreePage: React.FunctionComponent<React.PropsWithChildren<Props>> =
                     revision={revision}
                     tree={tree}
                 />
-            )}
+            )} */}
         </>
     )
 

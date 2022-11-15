@@ -1,3 +1,5 @@
+import { mdiFileDocumentOutline, mdiFolderOutline } from '@mdi/js'
+import { Link, Icon } from '@sourcegraph/wildcard'
 import React, { useCallback, useMemo, useState } from 'react'
 
 import classNames from 'classnames'
@@ -28,6 +30,7 @@ import { gitCommitFragment } from '../commits/RepositoryCommitsPage'
 
 import { TreeEntriesSection } from './TreeEntriesSection'
 
+import treeEntryStyles from './TreeEntriesSection.module.scss'
 import styles from './TreePage.module.scss'
 
 export type TreeCommitsRepositoryCommit = NonNullable<
@@ -179,10 +182,45 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
 
     return (
         <>
+            <div>README here</div>
             <section className={classNames('test-tree-entries mb-3', styles.section)}>
-                <Heading as="h3" styleAs="h2">
-                    Files and directories
-                </Heading>
+                <div>
+                    {tree.entries.map(entry => entry.isDirectory ? (<div>
+                        <Link
+                            to={entry.url}
+                            className={classNames(
+                                'test-page-file-decorable',
+                                treeEntryStyles.treeEntry,
+                                entry.isDirectory && 'font-weight-bold',
+                                `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`,
+                            )}
+                            title={entry.path}
+                            data-testid="tree-entry"
+                        >
+                            <div
+                                className={classNames(
+                                    'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
+                                )}
+                            >
+                                <span>
+                                    <Icon
+                                        className="mr-1"
+                                        svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
+                                        aria-hidden={true}
+                                    />
+                                    {entry.name}
+                                    {entry.isDirectory && '/'}
+                                </span>
+                                {/* {renderedFileDecorations} */}
+                            </div>
+                        </Link>
+                    </div>) : (<div>
+                        {entry.name}
+                    </div>
+                        
+                    ))}
+                </div>
+
                 <TreeEntriesSection
                     parentPath={filePath}
                     entries={tree.entries}
