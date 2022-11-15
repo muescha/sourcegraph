@@ -73,6 +73,15 @@ func TestWebhooksHandler(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	bbCloudWH, err := dbWebhooks.Create(
+		context.Background(),
+		extsvc.KindBitbucketCloud,
+		"http://bitbucket.com",
+		u.ID,
+		types.NewUnencryptedSecret("bbcloudsecret"),
+	)
+	require.NoError(t, err)
+
 	wr := WebhookRouter{
 		DB: db,
 	}
@@ -311,6 +320,38 @@ func TestWebhooksHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("Bitbucket Cloud returns 200", func(t *testing.T) {
+		requestURL := fmt.Sprintf("%s/.api/webhooks/%v", srv.URL, bbCloudWH.UUID)
+
+		payload := []byte(`{"body": "text"}`)
+
+		wh := &fakeWebhookHandler{}
+		wr.handlers = map[string]webhookEventHandlers{
+			extsvc.KindBitbucketCloud: {
+				"pullrequest:comment_created": []WebhookHandler{wh.handleEvent},
+			},
+		}
+
+		req, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(payload))
+		require.NoError(t, err)
+		req.Header.Set("X-Event-Key", "pullrequest:comment_created")
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+		logs, _, err := db.WebhookLogs(keyring.Default().WebhookLogKey).List(context.Background(), database.WebhookLogListOpts{
+			WebhookID: &bbCloudWH.ID,
+		})
+		assert.NoError(t, err)
+		assert.Len(t, logs, 1)
+		for _, log := range logs {
+			assert.Equal(t, bbCloudWH.ID, *log.WebhookID)
+		}
 	})
 }
 
