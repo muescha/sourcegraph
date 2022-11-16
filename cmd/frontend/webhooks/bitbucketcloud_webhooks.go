@@ -7,16 +7,18 @@ import (
 	"github.com/sourcegraph/log"
 
 	"github.com/sourcegraph/sourcegraph/internal/actor"
+	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/bitbucketcloud"
 )
 
-func (h *WebhookRouter) HandleBitbucketCloudWebhook(logger log.Logger, w http.ResponseWriter, r *http.Request, codeHostURN extsvc.CodeHostBaseURL) {
+func (wr *WebhookRouter) HandleBitbucketCloudWebhook(logger log.Logger, w http.ResponseWriter, r *http.Request, codeHostURN extsvc.CodeHostBaseURL) {
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Error while reading request body.", http.StatusInternalServerError)
 		return
 	}
+	defer r.Body.Close()
 	ctx := actor.WithInternalActor(r.Context())
 
 	eventType := r.Header.Get("X-Event-Key")
@@ -27,15 +29,13 @@ func (h *WebhookRouter) HandleBitbucketCloudWebhook(logger log.Logger, w http.Re
 	}
 
 	// Route the request based on the event type.
-	err = h.Dispatch(ctx, eventType, extsvc.KindBitbucketCloud, codeHostURN, e)
+	err = wr.Dispatch(ctx, eventType, extsvc.KindBitbucketCloud, codeHostURN, e)
 	if err != nil {
 		logger.Error("Error handling bitbucket cloud webhook event", log.Error(err))
-		switch err.(type) {
-		case eventTypeNotFoundError:
+		if errcode.IsNotFound(err) {
 			http.Error(w, err.Error(), http.StatusNotFound)
-		default:
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		return
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

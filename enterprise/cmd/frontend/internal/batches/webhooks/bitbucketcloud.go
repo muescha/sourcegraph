@@ -57,7 +57,6 @@ func (h *BitbucketCloudWebhook) Register(router *fewebhooks.WebhookRouter) {
 }
 
 func (h *BitbucketCloudWebhook) handleEvent(ctx context.Context, db database.DB, codeHostURN extsvc.CodeHostBaseURL, event any) error {
-	fmt.Printf("HANDLING EVENT: %v\n", event)
 	ctx = actor.WithInternalActor(ctx)
 
 	prs, ev, err := h.convertEvent(ctx, event, codeHostURN)
@@ -95,14 +94,12 @@ func (h *BitbucketCloudWebhook) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 	c, err := extSvc.Configuration(ctx)
 	if err != nil {
-		log15.Error("Could not decode external service config", "error", err)
 		http.Error(w, "Invalid external service config", http.StatusInternalServerError)
 		return
 	}
 
 	config, ok := c.(*schema.BitbucketCloudConnection)
 	if !ok {
-		log15.Error("Could not decode external service config")
 		http.Error(w, "Invalid external service config", http.StatusInternalServerError)
 		return
 	}

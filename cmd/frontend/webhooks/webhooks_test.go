@@ -23,6 +23,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 	"github.com/sourcegraph/sourcegraph/internal/encryption/keyring"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
+	"github.com/sourcegraph/sourcegraph/internal/extsvc/bitbucketcloud"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/bitbucketserver"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/gitlab/webhooks"
 	"github.com/sourcegraph/sourcegraph/internal/types"
@@ -325,8 +326,9 @@ func TestWebhooksHandler(t *testing.T) {
 	t.Run("Bitbucket Cloud returns 200", func(t *testing.T) {
 		requestURL := fmt.Sprintf("%s/.api/webhooks/%v", srv.URL, bbCloudWH.UUID)
 
-		payload := []byte(`{"body": "text"}`)
-
+		event := bitbucketcloud.PullRequestCommentCreatedEvent{}
+		payload, err := json.Marshal(event)
+		require.NoError(t, err)
 		wh := &fakeWebhookHandler{}
 		wr.handlers = map[string]webhookEventHandlers{
 			extsvc.KindBitbucketCloud: {
@@ -352,6 +354,8 @@ func TestWebhooksHandler(t *testing.T) {
 		for _, log := range logs {
 			assert.Equal(t, bbCloudWH.ID, *log.WebhookID)
 		}
+		assert.Equal(t, bbCloudWH.CodeHostURN, wh.codeHostURNReceived)
+		assert.Equal(t, &event, wh.eventReceived)
 	})
 }
 
