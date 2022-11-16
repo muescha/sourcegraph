@@ -64,19 +64,18 @@ func (h *BitbucketCloudWebhook) handleEvent(ctx context.Context, db database.DB,
 		return err
 	}
 
-	var m error
 	for _, pr := range prs {
 		if pr == (PR{}) {
 			log15.Warn("Dropping Bitbucket Server webhook event", "type", fmt.Sprintf("%T", event))
 			continue
 		}
 
-		err := h.upsertChangesetEvent(ctx, codeHostURN, pr, ev)
-		if err != nil {
-			m = errors.Append(m, err)
+		eventErr := h.upsertChangesetEvent(ctx, codeHostURN, pr, ev)
+		if eventErr != nil {
+			err = errors.Append(err, eventErr)
 		}
 	}
-	return m
+	return err
 }
 
 func (h *BitbucketCloudWebhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
