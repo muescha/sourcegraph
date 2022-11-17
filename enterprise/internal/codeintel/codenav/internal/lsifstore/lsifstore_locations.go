@@ -47,13 +47,24 @@ func (s *store) getLocations(ctx context.Context, extractor func(r precise.Range
 	}})
 	defer endObservation(1, observation.Args{})
 
-	documentData, exists, err := s.scanFirstDocumentData(s.db.Query(ctx, sqlf.Sprintf(locationsDocumentQuery, bundleID, path)))
+	documentData, exists, err := s.scanFirstDocumentData(s.db.Query(ctx, sqlf.Sprintf(
+		locationsDocumentQuery,
+		bundleID,
+		path,
+		bundleID,
+		path,
+	)))
 	if err != nil || !exists {
 		return nil, 0, err
 	}
 
-	trace.Log(log.Int("numRanges", len(documentData.Document.Ranges)))
-	ranges := precise.FindRanges(documentData.Document.Ranges, line, character)
+	if documentData.SCIPData != nil {
+		// TODO - implement
+		panic("Unimplemented SCIP payload in getLocations")
+	}
+
+	trace.Log(log.Int("numRanges", len(documentData.LSIFData.Ranges)))
+	ranges := precise.FindRanges(documentData.LSIFData.Ranges, line, character)
 	trace.Log(log.Int("numIntersectingRanges", len(ranges)))
 
 	orderedResultIDs := extractResultIDs(ranges, extractor)
@@ -72,21 +83,41 @@ func (s *store) getLocations(ctx context.Context, extractor func(r precise.Range
 }
 
 const locationsDocumentQuery = `
-SELECT
-	dump_id,
-	path,
-	data,
-	ranges,
-	NULL AS hovers,
-	NULL AS monikers,
-	NULL AS packages,
-	NULL AS diagnostics
-FROM
-	lsif_data_documents
-WHERE
-	dump_id = %s AND
-	path = %s
-LIMIT 1
+(
+	SELECT
+		sd.id,
+		sid.document_path,
+		NULL AS data,
+		NULL AS ranges,
+		NULL AS hovers,
+		NULL AS monikers,
+		NULL AS packages,
+		NULL AS diagnostics,
+		sd.raw_scip_payload AS scip_document
+	FROM codeintel_scip_index_documents sid
+	JOIN codeintel_scip_documents sd ON sd.id = sid.document_id
+	WHERE
+		sid.upload_id = %s AND
+		sid.document_path = %s
+	LIMIT 1
+) UNION (
+	SELECT
+		dump_id,
+		path,
+		data,
+		ranges,
+		NULL AS hovers,
+		NULL AS monikers,
+		NULL AS packages,
+		NULL AS diagnostics,
+		NULL AS scip_document
+	FROM
+		lsif_data_documents
+	WHERE
+		dump_id = %s AND
+		path = %s
+	LIMIT 1
+)
 `
 
 // locations queries the locations associated with the given definition or reference identifiers. This
@@ -293,7 +324,8 @@ SELECT
 	NULL AS hovers,
 	NULL AS monikers,
 	NULL AS packages,
-	NULL AS diagnostics
+	NULL AS diagnostics,
+	NULL AS scip_document
 FROM
 	lsif_data_documents
 WHERE

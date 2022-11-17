@@ -6,6 +6,7 @@ import (
 	codeintelshared "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/shared"
 	"github.com/sourcegraph/sourcegraph/internal/database/basestore"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
+	"github.com/sourcegraph/sourcegraph/lib/codeintel/lsif/conversion"
 	"github.com/sourcegraph/sourcegraph/lib/codeintel/precise"
 )
 
@@ -25,6 +26,9 @@ type LsifStore interface {
 
 	IDsWithMeta(ctx context.Context, ids []int) ([]int, error)
 	ReconcileCandidates(ctx context.Context, batchSize int) ([]int, error)
+
+	InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash [256]byte, rawSCIPPayload []byte) (int, error)
+	WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID int, symbols []conversion.ProcessedSymbolData) (uint32, error)
 }
 
 type store struct {

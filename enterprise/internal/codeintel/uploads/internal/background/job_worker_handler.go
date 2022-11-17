@@ -27,7 +27,6 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/workerutil/dbworker"
 	dbworkerstore "github.com/sourcegraph/sourcegraph/internal/workerutil/dbworker/store"
 	"github.com/sourcegraph/sourcegraph/lib/codeintel/lsif/conversion"
-	"github.com/sourcegraph/sourcegraph/lib/codeintel/precise"
 	"github.com/sourcegraph/sourcegraph/lib/errors"
 )
 
@@ -211,7 +210,7 @@ func (s *handler) HandleRawUpload(ctx context.Context, logger log.Logger, upload
 		return false, errors.Wrap(err, "Repos.Get")
 	}
 
-	if requeued, err := requeueIfCloningOrCommitUnknown(ctx, logger, s.repoStore, s.workerStore, upload, repo); err != nil || requeued {
+	if requeued, err := requeueIfCloningOrCommitUnknown(ctx, logger, s.repoStore, s.workerutilStore, upload, repo); err != nil || requeued {
 		return requeued, err
 	}
 
@@ -232,7 +231,7 @@ func (s *handler) HandleRawUpload(ctx context.Context, logger log.Logger, upload
 	}
 
 	return false, withUploadData(ctx, logger, uploadStore, upload.ID, trace, func(r io.Reader) (err error) {
-		groupedBundleData, err := conversion.Correlate(ctx, r, upload.Root, getChildren)
+		correlatedSCIPData, err := conversion.CorrelateSCIP(ctx, r, upload.Root, getChildren)
 		if err != nil {
 			return errors.Wrap(err, "conversion.Correlate")
 		}
@@ -261,7 +260,7 @@ func (s *handler) HandleRawUpload(ctx context.Context, logger log.Logger, upload
 
 		// Note: this is writing to a different database than the block below, so we need to use a
 		// different transaction context (managed by the writeData function).
-		if err := writeData(ctx, s.lsifstore, upload, repo, isDefaultBranch, groupedBundleData, trace); err != nil {
+		if err := writeData(ctx, s.lsifstore, upload, repo, isDefaultBranch, correlatedSCIPData, trace); err != nil {
 			if isUniqueConstraintViolation(err) {
 				// If this is a unique constraint violation, then we've previously processed this same
 				// upload record up to this point, but failed to perform the transaction below. We can
@@ -399,45 +398,31 @@ func withUploadData(ctx context.Context, logger log.Logger, uploadStore uploadst
 }
 
 // writeData transactionally writes the given grouped bundle data into the given LSIF store.
-func writeData(ctx context.Context, lsifStore lsifstore.LsifStore, upload codeinteltypes.Upload, repo *types.Repo, isDefaultBranch bool, groupedBundleData *precise.GroupedBundleDataChans, trace observation.TraceLogger) (err error) {
+func writeData(ctx context.Context, lsifStore lsifstore.LsifStore, upload codeinteltypes.Upload, repo *types.Repo, isDefaultBranch bool, correlatedSCIPData conversion.ProcessedSCIPStream, trace observation.TraceLogger) (err error) {
 	tx, err := lsifStore.Transact(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { err = tx.Done(err) }()
 
-	if err := tx.WriteMeta(ctx, upload.ID, groupedBundleData.Meta); err != nil {
-		return errors.Wrap(err, "store.WriteMeta")
-	}
-	count, err := tx.WriteDocuments(ctx, upload.ID, groupedBundleData.Documents)
-	if err != nil {
-		return errors.Wrap(err, "store.WriteDocuments")
-	}
-	trace.Log(otlog.Uint32("numDocuments", count))
+	for document := range correlatedSCIPData.DocumentData {
+		documentLookupID, err := tx.InsertSCIPDocument(
+			ctx,
+			upload.ID,
+			document.Document.DocumentPath,
+			document.Document.Hash,
+			document.Document.RawSCIPPayload,
+		)
+		if err != nil {
+			return err
+		}
 
-	count, err = tx.WriteResultChunks(ctx, upload.ID, groupedBundleData.ResultChunks)
-	if err != nil {
-		return errors.Wrap(err, "store.WriteResultChunks")
+		count, err := tx.WriteSCIPSymbols(ctx, upload.ID, documentLookupID, document.Symbols)
+		if err != nil {
+			return err
+		}
+		_ = count // trace.Log(otlog.Uint32("numSymbols", count))
 	}
-	trace.Log(otlog.Uint32("numResultChunks", count))
-
-	count, err = tx.WriteDefinitions(ctx, upload.ID, groupedBundleData.Definitions)
-	if err != nil {
-		return errors.Wrap(err, "store.WriteDefinitions")
-	}
-	trace.Log(otlog.Uint32("numDefinitions", count))
-
-	count, err = tx.WriteReferences(ctx, upload.ID, groupedBundleData.References)
-	if err != nil {
-		return errors.Wrap(err, "store.WriteReferences")
-	}
-	trace.Log(otlog.Uint32("numReferences", count))
-
-	count, err = tx.WriteImplementations(ctx, upload.ID, groupedBundleData.Implementations)
-	if err != nil {
-		return errors.Wrap(err, "store.WriteImplementations")
-	}
-	trace.Log(otlog.Uint32("numImplementations", count))
 
 	return nil
 }

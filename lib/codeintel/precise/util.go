@@ -3,6 +3,8 @@ package precise
 import (
 	"context"
 	"sort"
+
+	"github.com/sourcegraph/scip/bindings/go/scip"
 )
 
 // FindRanges filters the given ranges and returns those that contain the position constructed
@@ -18,6 +20,27 @@ func FindRanges(ranges map[ID]RangeData, line, character int) []RangeData {
 
 	sort.Slice(filtered, func(i, j int) bool {
 		return ComparePosition(filtered[i], filtered[j].StartLine, filtered[j].StartCharacter) != 0
+	})
+
+	return filtered
+}
+
+// FindOccurrences filters the given occurrences and returns those that contain the position
+// constructed from line and character. The order of the output slice is "outside-in", so that
+// earlier occurrences properly enclose later occurrences.
+func FindOccurrences(occurrences []*scip.Occurrence, line, character int) []*scip.Occurrence {
+	var filtered []*scip.Occurrence
+	for _, o := range occurrences {
+		if ComparePositionSCIP(scip.NewRange(o.Range), line, character) == 0 {
+			filtered = append(filtered, o)
+		}
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		ri := scip.NewRange(filtered[i].Range)
+		rj := scip.NewRange(filtered[j].Range)
+
+		return ComparePositionSCIP(ri, int(rj.Start.Line), int(rj.Start.Character)) != 0
 	})
 
 	return filtered
@@ -135,6 +158,29 @@ func ComparePosition(r RangeData, line, character int) int {
 	}
 
 	if line == r.EndLine && character >= r.EndCharacter {
+		return -1
+	}
+
+	return 0
+}
+
+// ComparePositionSCIP compares the range r with the position constructed from line and character.
+// Returns -1 if the position occurs before the range, +1 if it occurs after, and 0 if the
+// position is inside of the range.
+func ComparePositionSCIP(r *scip.Range, line, character int) int {
+	if line < int(r.Start.Line) {
+		return 1
+	}
+
+	if line > int(r.End.Line) {
+		return -1
+	}
+
+	if line == int(r.Start.Line) && character < int(r.Start.Character) {
+		return 1
+	}
+
+	if line == int(r.End.Line) && character >= int(r.End.Character) {
 		return -1
 	}
 

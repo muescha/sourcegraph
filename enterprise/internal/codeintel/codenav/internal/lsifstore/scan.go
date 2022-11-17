@@ -3,6 +3,9 @@ package lsifstore
 import (
 	"database/sql"
 
+	"github.com/sourcegraph/scip/bindings/go/scip"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/sourcegraph/sourcegraph/internal/database/basestore"
 	"github.com/sourcegraph/sourcegraph/lib/codeintel/precise"
 )
@@ -30,37 +33,52 @@ func (s *store) scanFirstDocumentData(rows *sql.Rows, queryErr error) (_ Qualifi
 // scanSingleDocumentDataObject populates a qualified document data value from the given cursor.
 func (s *store) scanSingleDocumentDataObject(rows *sql.Rows) (QualifiedDocumentData, error) {
 	var rawData []byte
+	var uploadID int
+	var path string
 	var encoded MarshalledDocumentData
-	var record QualifiedDocumentData
+	var scipPayload []byte
 
 	if err := rows.Scan(
-		&record.UploadID,
-		&record.Path,
+		&uploadID,
+		&path,
 		&rawData,
 		&encoded.Ranges,
 		&encoded.HoverResults,
 		&encoded.Monikers,
 		&encoded.PackageInformation,
 		&encoded.Diagnostics,
+		&scipPayload,
 	); err != nil {
 		return QualifiedDocumentData{}, err
 	}
 
-	if len(rawData) != 0 {
+	qualifiedData := QualifiedDocumentData{
+		UploadID: uploadID,
+		Path:     path,
+	}
+
+	if len(scipPayload) != 0 {
+		var data scip.Document
+		if err := proto.Unmarshal(scipPayload, &data); err != nil {
+			return QualifiedDocumentData{}, err
+		}
+
+		qualifiedData.SCIPData = &data
+	} else if len(rawData) != 0 {
 		data, err := s.serializer.UnmarshalLegacyDocumentData(rawData)
 		if err != nil {
 			return QualifiedDocumentData{}, err
 		}
-		record.Document = data
+		qualifiedData.LSIFData = &data
 	} else {
 		data, err := s.serializer.UnmarshalDocumentData(encoded)
 		if err != nil {
 			return QualifiedDocumentData{}, err
 		}
-		record.Document = data
+		qualifiedData.LSIFData = &data
 	}
 
-	return record, nil
+	return qualifiedData, nil
 }
 
 // makeResultChunkVisitor returns a function that accepts a mapping function, reads
@@ -107,7 +125,7 @@ func (s *store) makeDocumentVisitor(f func(string, precise.DocumentData)) func(r
 				return err
 			}
 
-			f(record.Path, record.Document)
+			f(record.Path, *record.LSIFData)
 		}
 
 		return nil

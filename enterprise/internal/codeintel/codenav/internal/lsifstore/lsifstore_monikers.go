@@ -26,21 +26,47 @@ func (s *store) GetMonikersByPosition(ctx context.Context, uploadID int, path st
 	}})
 	defer endObservation(1, observation.Args{})
 
-	query := sqlf.Sprintf(monikersDocumentQuery, uploadID, path)
-	documentData, exists, err := s.scanFirstDocumentData(s.db.Query(ctx, query))
+	documentData, exists, err := s.scanFirstDocumentData(s.db.Query(ctx, sqlf.Sprintf(
+		monikersDocumentQuery,
+		uploadID,
+		path,
+		uploadID,
+		path,
+	)))
 	if err != nil || !exists {
 		return nil, err
 	}
 
-	trace.Log(log.Int("numRanges", len(documentData.Document.Ranges)))
-	ranges := precise.FindRanges(documentData.Document.Ranges, line, character)
+	if documentData.SCIPData != nil {
+		trace.Log(log.Int("numOccurrences", len(documentData.SCIPData.Occurrences)))
+		occurrences := precise.FindOccurrences(documentData.SCIPData.Occurrences, line, character)
+		trace.Log(log.Int("numIntersectingOccurrences", len(occurrences)))
+
+		monikerData := make([][]precise.MonikerData, 0, len(occurrences))
+		for _, o := range occurrences {
+			monikerData = append(monikerData, []precise.MonikerData{
+				{
+					Scheme:               "scip",
+					Kind:                 "",       // TODO - need to look at symbol role?
+					Identifier:           o.Symbol, // TODO - strip version from symbol?
+					PackageInformationID: "",       // TODO - parse version from symbol
+				},
+			})
+		}
+		trace.Log(log.Int("numMonikers", len(monikerData)))
+
+		return monikerData, nil
+	}
+
+	trace.Log(log.Int("numRanges", len(documentData.LSIFData.Ranges)))
+	ranges := precise.FindRanges(documentData.LSIFData.Ranges, line, character)
 	trace.Log(log.Int("numIntersectingRanges", len(ranges)))
 
 	monikerData := make([][]precise.MonikerData, 0, len(ranges))
 	for _, r := range ranges {
 		batch := make([]precise.MonikerData, 0, len(r.MonikerIDs))
 		for _, monikerID := range r.MonikerIDs {
-			if moniker, exists := documentData.Document.Monikers[monikerID]; exists {
+			if moniker, exists := documentData.LSIFData.Monikers[monikerID]; exists {
 				batch = append(batch, moniker)
 			}
 		}
@@ -54,21 +80,41 @@ func (s *store) GetMonikersByPosition(ctx context.Context, uploadID int, path st
 }
 
 const monikersDocumentQuery = `
-SELECT
-	dump_id,
-	path,
-	data,
-	ranges,
-	NULL AS hovers,
-	monikers,
-	NULL AS packages,
-	NULL AS diagnostics
-FROM
-	lsif_data_documents
-WHERE
-	dump_id = %s AND
-	path = %s
-LIMIT 1
+(
+	SELECT
+		sd.id,
+		sid.document_path,
+		NULL AS data,
+		NULL AS ranges,
+		NULL AS hovers,
+		NULL AS monikers,
+		NULL AS packages,
+		NULL AS diagnostics,
+		sd.raw_scip_payload AS scip_document
+	FROM codeintel_scip_index_documents sid
+	JOIN codeintel_scip_documents sd ON sd.id = sid.document_id
+	WHERE
+		sid.upload_id = %s AND
+		sid.document_path = %s
+	LIMIT 1
+) UNION (
+	SELECT
+		dump_id,
+		path,
+		data,
+		ranges,
+		NULL AS hovers,
+		monikers,
+		NULL AS packages,
+		NULL AS diagnostics,
+		NULL AS scip_document
+	FROM
+		lsif_data_documents
+	WHERE
+		dump_id = %s AND
+		path = %s
+	LIMIT 1
+)
 `
 
 // GetBulkMonikerLocations returns the locations (within one of the given uploads) with an attached moniker
@@ -150,6 +196,7 @@ outer:
 	return locations, totalCount, nil
 }
 
+// TODO - update to query SCIP
 const bulkMonikerResultsQuery = `
 SELECT dump_id, scheme, identifier, data
 FROM %s

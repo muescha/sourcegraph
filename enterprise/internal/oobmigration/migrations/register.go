@@ -92,6 +92,7 @@ func registerEnterpriseMigrators(runner *oobmigration.Runner, noDelay bool, deps
 		codeintel.NewDefinitionLocationsCountMigrator(deps.codeIntelStore, 1000, 0),
 		codeintel.NewReferencesLocationsCountMigrator(deps.codeIntelStore, 1000, 0),
 		codeintel.NewDocumentColumnSplitMigrator(deps.codeIntelStore, 100, 0),
+		codeintel.NewSCIPMigrator(deps.codeIntelStore),
 		insights.NewMigrator(deps.store, deps.insightsStore),
 	})
 }
