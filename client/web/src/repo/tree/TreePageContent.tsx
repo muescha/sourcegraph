@@ -70,6 +70,7 @@ export type TreeCommitsRepositoryCommit = NonNullable<
 >
 
 // TODO(beyang): dark theme
+// TODO(beyang): add back settings, code graph, etc. buttons to the right of the header
 
 export const fetchTreeCommits = memoizeObservable(
     (args: {
