@@ -10,8 +10,15 @@
 --  * If you are modifying Postgres extensions, you must also declare "privileged: true"
 --    in the associated metadata.yaml file.
 
--- create backfill records for all eligible series that don't already have one.
--- create a job for all `new` backfills this will be any uncompleted backfills & old JIT series
+-- adjust any remaining JIT series so they will backfill as if just created
+update insight_series
+set needs_migration =false, just_in_time=false, created_at=now() at time zone 'utc', next_snapshot_after = 'tomorrow' at time zone 'utc', next_recording_after = now() + (sample_interval_value::TEXT || ' ' || sample_interval_unit::TEXT)::INTERVAL at time zone 'utc'
+where backfill_queued_at is null
+  AND just_in_time = true
+  AND deleted_at is null
+  AND generation_method not in ('language-stats', 'mapping-compute');
+
+-- make backfill records for all series without them and queue any that need backfills
 with migrated_backfills as (
     insert into insight_series_backfill (series_id, state)
         select s.id, case when s.backfill_queued_at is null then 'new' else 'completed' end
@@ -27,9 +34,9 @@ select id
 from migrated_backfills
 where state = 'new';
 
--- update the series to indicate it's been queued for backfilling and mark as no longer just in time
+-- update series to indicate it's been queued for backfilling
 update insight_series
-set backfill_queued_at = now(), needs_migration =false, just_in_time=false
+set backfill_queued_at = now()
 where backfill_queued_at is null
   and deleted_at is null
   AND generation_method not in ('language-stats', 'mapping-compute');
