@@ -186,3 +186,13 @@ func TestRangeIntersectsSpan(t *testing.T) {
 		}
 	}
 }
+
+func TestFindOccurrences(t *testing.T) {
+	// TODO
+	t.Fatalf("unimplemented")
+}
+
+func TestComparePositionSCIP(t *testing.T) {
+	// TODO
+	t.Fatalf("unimplemented")
+}
