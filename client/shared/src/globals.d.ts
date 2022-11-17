@@ -27,14 +27,3 @@ declare var jsdom: import('jsdom').JSDOM
 interface Window {
     context?: any
 }
-
-declare global {
-    namespace jest {
-        interface Matchers<R, T> {
-            toBeAriaEnabled(): R
-            toBeAriaDisabled(): R
-        }
-    }
-}
-
-export {}
