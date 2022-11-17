@@ -18,8 +18,7 @@
 }
 
 .git-commit-node {
-    padding-left: 0;
-    padding-right: 0;
+    padding: 0.25rem 0;
 
     &-message-subject {
         opacity: 0.9;
@@ -41,3 +40,26 @@
     width: 100%;
     max-width: var(--media-xl);
 }
+
+// // TODO: replace with wildcard components?
+// .panel {
+//     margin: 0 1rem;
+// }
+
+// .panel-header {
+//     padding: 0.25rem 0.5rem;
+//     border-bottom: 1px solid #e8e9ea;
+//     border-radius: 0.25rem 0.25rem 0 0;
+//     background-color: #e8e9ea;
+//     font-weight: bold;
+// }
+
+// .panel-body {
+//     border-radius: 0 0 0.25rem 0.25rem;
+//     border: 1px solid #e8e9ea;
+// }
+
+// .panel-row-body {
+//     margin: 0.25rem 0.5rem;
+//     border-bottom: 1px solid #e8e9ea;
+// }

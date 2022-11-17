@@ -1,5 +1,5 @@
 import { mdiFileDocumentOutline, mdiFolderOutline } from '@mdi/js'
-import { Link, Icon } from '@sourcegraph/wildcard'
+import { Link, Icon, Card, CardHeader, Tooltip } from '@sourcegraph/wildcard'
 import React, { useCallback, useMemo, useState } from 'react'
 
 import classNames from 'classnames'
@@ -9,13 +9,13 @@ import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
 
 import { ContributableMenu } from '@sourcegraph/client-api'
-import { memoizeObservable, pluralize } from '@sourcegraph/common'
+import { memoizeObservable, numberWithCommas, pluralize } from '@sourcegraph/common'
 import { dataOrThrowErrors, gql } from '@sourcegraph/http-client'
 import { ActionItem } from '@sourcegraph/shared/src/actions/ActionItem'
 import { ActionsContainer } from '@sourcegraph/shared/src/actions/ActionsContainer'
 import { FileDecorationsByPath } from '@sourcegraph/shared/src/api/extension/extensionHostApi'
 import { ExtensionsControllerProps } from '@sourcegraph/shared/src/extensions/controller'
-import { TreeFields } from '@sourcegraph/shared/src/graphql-operations'
+import { SearchPatternType, TreeFields } from '@sourcegraph/shared/src/graphql-operations'
 import { PlatformContextProps } from '@sourcegraph/shared/src/platform/context'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
@@ -24,7 +24,15 @@ import { Button, Heading, Text, useObservable } from '@sourcegraph/wildcard'
 import { getFileDecorations } from '../../backend/features'
 import { queryGraphQL } from '../../backend/graphql'
 import { FilteredConnection } from '../../components/FilteredConnection'
-import { GitCommitFields, Scalars, TreeCommitsResult, TreePageRepositoryFields } from '../../graphql-operations'
+import {
+    GitCommitFields,
+    RepositoryContributorNodeFields,
+    RepositoryContributorsResult,
+    RepositoryContributorsVariables,
+    Scalars,
+    TreeCommitsResult,
+    TreePageRepositoryFields,
+} from '../../graphql-operations'
 import { GitCommitNodeProps, GitCommitNode } from '../commits/GitCommitNode'
 import { gitCommitFragment } from '../commits/RepositoryCommitsPage'
 
@@ -32,12 +40,36 @@ import { TreeEntriesSection } from './TreeEntriesSection'
 
 import treeEntryStyles from './TreeEntriesSection.module.scss'
 import styles from './TreePage.module.scss'
+import contributorsStyles from './TreePageContentContributors.module.scss'
 import { fetchBlob } from '../blob/backend'
 import { RenderedFile } from '../blob/RenderedFile'
+import { FilePanel } from './TreePagePanels'
+import { error } from 'shelljs'
+import { loading } from '../../auth/welcome/InviteCollaborators/InviteCollaborators.module.scss'
+import {
+    ConnectionContainer,
+    ConnectionError,
+    ConnectionList,
+    ConnectionLoading,
+    SummaryContainer,
+    ConnectionSummary,
+    ShowMoreButton,
+} from '../../components/FilteredConnection/ui'
+import { hasNextPage } from '../../components/FilteredConnection/utils'
+import { BATCH_COUNT } from '../RepositoriesPopover'
+import { useConnection } from '../../components/FilteredConnection/hooks/useConnection'
+import { buildSearchURLQuery } from '@sourcegraph/shared/src/util/url'
+import { escapeRegExp } from 'lodash'
+import { Timestamp } from 'rxjs/internal/operators/timestamp'
+import { PersonLink } from '../../person/PersonLink'
+import { searchQueryForRepoRevision, quoteIfNeeded } from '../../search'
+import { UserAvatar } from '../../user/UserAvatar'
 
 export type TreeCommitsRepositoryCommit = NonNullable<
     Extract<TreeCommitsResult['node'], { __typename: 'Repository' }>['commit']
 >
+
+// TODO(beyang): dark theme
 
 export const fetchTreeCommits = memoizeObservable(
     (args: {
@@ -182,195 +214,286 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
 
     const { extensionsController } = props
 
-
-
     const richHTMLResults = useObservable(
-        useMemo(() => fetchBlob({
-            repoName: repo.name,
-            revision,
-            filePath: `${filePath}/README.md`,
-            disableTimeout: true,
-        }), [repo.name, revision, filePath])
+        useMemo(
+            () =>
+                fetchBlob({
+                    repoName: repo.name,
+                    revision,
+                    filePath: `${filePath}/README.md`,
+                    disableTimeout: true,
+                }),
+            [repo.name, revision, filePath]
+        )
     )
 
     const richHTML = richHTMLResults?.richHTML
 
-    // useCallback(() => {
-    //     fetchBlob({
-    //         repoName: repo.name,
-    //         revision,
-    //         filePath: `${filePath}/README.md`,
-    //         disableTimeout: true,
-    //     }).forEach()
-    // }, [repo.name, commitID, filePath, revision])
-
-
-    // const READMEFile: React.FunctionComponent<React.PropsWithChildren<unknown>> = () => (
-    //     <div>
-    //         {richHTML && richHTML !== 'loading' && (
-    //             <RenderedFile className="pt-0 pl-3" dangerousInnerHTML={richHTML} location={props.location} />
-    //         )}
-    //         {!richHTML && richHTML !== 'loading' && (
-    //             <div className="text-center mt-5">
-    //                 <img src="https://i.ibb.co/tztztYB/eric.png" alt="winner" className="mb-3 w-25" />
-    //                 <H2>No README available :)</H2>
-    //             </div>
-    //         )}
-    //         {blobInfoOrError && richHTML && aborted && (
-    //             <div>
-    //                 <Alert variant="info">
-    //                     Rendering this file took too long. &nbsp;
-    //                     <Button onClick={onExtendTimeoutClick} variant="primary" size="sm">
-    //                         Try again
-    //                     </Button>
-    //                 </Alert>
-    //             </div>
-    //         )}
-    //     </div>
-    // )
-
     return (
         <>
             <div>
+                {' '}
+                {/* TODO: factor this out into MarkdownPreview component */}
                 {richHTML && richHTML !== 'loading' && (
-                    <div style={{
-                        maxHeight: '30rem',
-                        overflow: 'hidden',
-                        position: 'relative',
-                        // border: "5px solid red",
-                    }}>
+                    <div
+                        style={{
+                            maxHeight: '30rem',
+                            overflow: 'hidden',
+                            position: 'relative',
+                        }}
+                    >
                         <RenderedFile className="pt-0 pl-3" dangerousInnerHTML={richHTML} location={props.location} />
-                        {/* <div style={{
-                            position: 'absolute',
-                            bottom: '0',
-                            left: '1rem',
-                            width: '100%',
-                            maxWidth: '50rem',
-                            height: ' 1.5rem',
-                            textAlign: 'center',
-                            backgroundImage: 'linear-gradient(to bottom, transparent, white)',
-                            verticalAlign: 'text-bottom',
-                        }}>
-                            <div style={{
-                                verticalAlign: 'text-bottom'
-                            }}>
-                                View more
-                            </div>
-                        </div> */}
                     </div>
                 )}
             </div>
-            <div style={{
-                padding: '0 1rem'
-            }}><Link to="TODO">More...</Link></div>
-            <section style={{
-                marginTop: '1rem'
-            }} className={classNames('test-tree-entries mb-3', styles.section)}>
-                <div style={{
-                    margin: '0 1rem'
-                }}>
-                    {tree.entries.map(entry => entry.isDirectory ? (
-                        <div key={entry.name}>
-                            <Link
-                                to={entry.url}
-                                className={classNames(
-                                    'test-page-file-decorable',
-                                    treeEntryStyles.treeEntry,
-                                    entry.isDirectory && 'font-weight-bold',
-                                    `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`,
-                                )}
-                                title={entry.path}
-                                data-testid="tree-entry"
-                            >
-                                <div
-                                    className={classNames(
-                                        'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
-                                    )}
-                                >
-                                    <span>
-                                        <Icon
-                                            className="mr-1"
-                                            svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
-                                            aria-hidden={true}
-                                        />
-                                        {entry.name}
-                                        {entry.isDirectory && '/'}
-                                    </span>
-                                    {/* {renderedFileDecorations} */}
-                                </div>
-                            </Link>
-                        </div>
-                    ) : (
-                        <div key={entry.name}>
-                            {entry.name}
-                        </div>
-                    ))}
-                </div>
-
-                <TreeEntriesSection
-                    parentPath={filePath}
-                    entries={tree.entries}
-                    fileDecorationsByPath={fileDecorationsByPath}
-                    isLightTheme={props.isLightTheme}
-                />
-            </section>
-            {extensionsController !== null && window.context.enableLegacyExtensions ? (
-                <ActionsContainer
-                    {...props}
-                    extensionsController={extensionsController}
-                    menu={ContributableMenu.DirectoryPage}
-                    empty={null}
-                >
-                    {items => (
-                        <section className={styles.section}>
-                            <Heading as="h3" styleAs="h2">
-                                Actions
-                            </Heading>
-                            {items.map(item => (
-                                <Button
-                                    {...props}
-                                    extensionsController={extensionsController}
-                                    key={item.action.id}
-                                    {...item}
-                                    className="mr-1 mb-1"
-                                    variant="secondary"
-                                    as={ActionItem}
-                                />
-                            ))}
-                        </section>
-                    )}
-                </ActionsContainer>
-            ) : null}
-
-            <div className={styles.section}>
-                <Heading as="h3" styleAs="h2">
-                    Changes
-                </Heading>
-                <FilteredConnection<
-                    GitCommitFields,
-                    Pick<GitCommitNodeProps, 'className' | 'compact' | 'messageSubjectClassName' | 'wrapperElement'>
-                >
-                    location={props.location}
-                    className="mt-2"
-                    listClassName="list-group list-group-flush"
-                    noun="commit in this tree"
-                    pluralNoun="commits in this tree"
-                    queryConnection={queryCommits}
-                    nodeComponent={GitCommitNode}
-                    nodeComponentProps={{
-                        className: classNames('list-group-item', styles.gitCommitNode),
-                        messageSubjectClassName: styles.gitCommitNodeMessageSubject,
-                        compact: true,
-                        wrapperElement: 'li',
-                    }}
-                    updateOnChange={`${repo.name}:${revision}:${filePath}:${String(showOlderCommits)}`}
-                    defaultFirst={7}
-                    useURLQuery={false}
-                    hideSearch={true}
-                    emptyElement={emptyElement}
-                    totalCountSummaryComponent={TotalCountSummary}
-                />
+            <div className="px-3 pb-3">
+                <Link to="TODO">More...</Link>
             </div>
+            <section className={classNames('test-tree-entries mb-3 container', styles.section)}>
+                <div className="row">
+                    <div className="col-6">
+                        <FilePanel tree={tree} />
+                    </div>
+                    <div className="col-6">
+                        <Card className="card">
+                            <CardHeader>Commits</CardHeader>
+                            {/* TODO(beyang): ultra-compact mode and collapse date timestamps into headers */}
+                            <FilteredConnection<
+                                GitCommitFields,
+                                Pick<
+                                    GitCommitNodeProps,
+                                    'className' | 'compact' | 'messageSubjectClassName' | 'wrapperElement'
+                                >
+                            >
+                                location={props.location}
+                                className="foobar"
+                                listClassName="list-group list-group-flush"
+                                noun="commit in this tree"
+                                pluralNoun="commits in this tree"
+                                queryConnection={queryCommits}
+                                nodeComponent={GitCommitNode}
+                                nodeComponentProps={{
+                                    className: classNames('list-group-item px-2 py-1', styles.gitCommitNode),
+                                    messageSubjectClassName: styles.gitCommitNodeMessageSubject,
+                                    compact: true,
+                                    wrapperElement: 'li',
+                                }}
+                                updateOnChange={`${repo.name}:${revision}:${filePath}:${String(showOlderCommits)}`}
+                                defaultFirst={20}
+                                useURLQuery={false}
+                                hideSearch={true}
+                                emptyElement={emptyElement}
+                                totalCountSummaryComponent={TotalCountSummary}
+                            />
+                        </Card>
+
+                        <Card className="card mt-3">
+                            <CardHeader>Contributors</CardHeader>
+                            <Contributors
+                                filePath={filePath}
+                                tree={tree}
+                                repo={repo}
+                                commitID={commitID}
+                                revision={revision}
+                                {...props}
+                            />
+                        </Card>
+                    </div>
+                </div>
+            </section>
         </>
+    )
+}
+
+const CONTRIBUTORS_QUERY = gql`
+    query RepositoryContributors($repo: ID!, $first: Int, $revisionRange: String, $afterDate: String, $path: String) {
+        node(id: $repo) {
+            ... on Repository {
+                contributors(first: $first, revisionRange: $revisionRange, afterDate: $afterDate, path: $path) {
+                    ...RepositoryContributorConnectionFields
+                }
+            }
+        }
+    }
+
+    fragment RepositoryContributorConnectionFields on RepositoryContributorConnection {
+        totalCount
+        pageInfo {
+            hasNextPage
+        }
+        nodes {
+            ...RepositoryContributorNodeFields
+        }
+    }
+
+    fragment RepositoryContributorNodeFields on RepositoryContributor {
+        person {
+            name
+            displayName
+            email
+            avatarURL
+            user {
+                username
+                url
+                displayName
+            }
+        }
+        count
+        commits(first: 1) {
+            nodes {
+                oid
+                abbreviatedOID
+                url
+                subject
+                author {
+                    date
+                }
+            }
+        }
+    }
+`
+
+interface ContributorsProps extends TreePageContentProps {}
+
+const Contributors: React.FunctionComponent<ContributorsProps> = ({ repo, filePath }) => {
+    // TODO
+    const spec: QuerySpec = {
+        revisionRange: '',
+        after: '',
+        path: filePath,
+    }
+
+    const { connection, error, loading, hasNextPage, fetchMore } = useConnection<
+        RepositoryContributorsResult,
+        RepositoryContributorsVariables,
+        RepositoryContributorNodeFields
+    >({
+        query: CONTRIBUTORS_QUERY,
+        variables: {
+            first: BATCH_COUNT,
+            repo: repo.id,
+            revisionRange: spec.revisionRange,
+            afterDate: spec.after,
+            path: filePath,
+        },
+        getConnection: result => {
+            const { node } = dataOrThrowErrors(result)
+            if (!node) {
+                throw new Error(`Node ${repo.id} not found`)
+            }
+            if (!('contributors' in node)) {
+                throw new Error('Failed to fetch contributors for this repo')
+            }
+            return node.contributors
+        },
+        options: {
+            fetchPolicy: 'cache-first',
+        },
+    })
+
+    return (
+        <ConnectionContainer>
+            {error && <ConnectionError errors={[error.message]} />}
+            {connection && connection.nodes.length > 0 && (
+                <ConnectionList className="list-group list-group-flush test-filtered-contributors-connection">
+                    {connection.nodes.map(node => (
+                        <RepositoryContributorNode
+                            key={`${node.person.displayName}:${node.count}`}
+                            node={node}
+                            repoName={repo.name}
+                            // TODO: what does `globbing` do?
+                            globbing={true}
+                            {...spec}
+                        />
+                    ))}
+                </ConnectionList>
+            )}
+            {loading && <ConnectionLoading />}
+            <SummaryContainer>
+                {connection && (
+                    <ConnectionSummary
+                        connection={connection}
+                        first={BATCH_COUNT}
+                        noun="contributor"
+                        pluralNoun="contributors"
+                        hasNextPage={hasNextPage}
+                    />
+                )}
+                {hasNextPage && <ShowMoreButton onClick={fetchMore} />}
+            </SummaryContainer>
+        </ConnectionContainer>
+    )
+}
+
+interface QuerySpec {
+    revisionRange: string
+    after: string
+    path: string
+}
+
+interface RepositoryContributorNodeProps extends QuerySpec {
+    node: RepositoryContributorNodeFields
+    repoName: string
+    globbing: boolean
+}
+
+const RepositoryContributorNode: React.FunctionComponent<React.PropsWithChildren<RepositoryContributorNodeProps>> = ({
+    node,
+    repoName,
+    revisionRange,
+    after,
+    path,
+    globbing,
+}) => {
+    const commit = node.commits.nodes[0] as RepositoryContributorNodeFields['commits']['nodes'][number] | undefined
+
+    const query: string = [
+        searchQueryForRepoRevision(repoName, globbing),
+        'type:diff',
+        `author:${quoteIfNeeded(node.person.email)}`,
+        after ? `after:${quoteIfNeeded(after)}` : '',
+        path ? `file:${quoteIfNeeded(escapeRegExp(path))}` : '',
+    ]
+        .join(' ')
+        .replace(/\s+/, ' ')
+
+    return (
+        <li className={classNames('list-group-item py-2', contributorsStyles.repositoryContributorNode)}>
+            <div className={contributorsStyles.person}>
+                <UserAvatar inline={true} className="mr-2" user={node.person} />
+                <PersonLink userClassName="font-weight-bold" person={node.person} />
+            </div>
+            <div className={contributorsStyles.commits}>
+                <div className={contributorsStyles.commit}>
+                    {commit && (
+                        <>
+                            {/* <Timestamp date={commit.author.date} />:{' '} */}
+                            <Tooltip content="Most recent commit by contributor" placement="bottom">
+                                <Link to={commit.url} className="repository-contributor-node__commit-subject">
+                                    {commit.subject}
+                                </Link>
+                            </Tooltip>
+                        </>
+                    )}
+                </div>
+                <div className={contributorsStyles.count}>
+                    <Tooltip
+                        content={
+                            revisionRange?.includes('..')
+                                ? 'All commits will be shown (revision end ranges are not yet supported)'
+                                : null
+                        }
+                        placement="left"
+                    >
+                        <Link
+                            to={`/search?${buildSearchURLQuery(query, SearchPatternType.standard, false)}`}
+                            className="font-weight-bold"
+                        >
+                            {numberWithCommas(node.count)} {pluralize('commit', node.count)}
+                        </Link>
+                    </Tooltip>
+                </div>
+            </div>
+        </li>
     )
 }
