@@ -1,7 +1,10 @@
 package lsifstore
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/keegancsmith/sqlf"
@@ -58,15 +61,32 @@ func (s *store) WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID
 
 	inserter := func(inserter *batch.Inserter) error {
 		for _, symbol := range symbols {
+			definitionRanges, err := compactRange(symbol.DefinitionRanges)
+			if err != nil {
+				return err
+			}
+			referenceRanges, err := compactRange(symbol.ReferenceRanges)
+			if err != nil {
+				return err
+			}
+			implementationRanges, err := compactRange(symbol.ImplementationRanges)
+			if err != nil {
+				return err
+			}
+			typeDefinitionRanges, err := compactRange(symbol.TypeDefinitionRanges)
+			if err != nil {
+				return err
+			}
+
 			if err := inserter.Insert(
 				ctx,
 				uploadID,
 				symbol.SymbolName,
 				documentLookupID,
-				symbol.DefinitionRanges,     // TODO - store as compact bytea
-				symbol.ReferenceRanges,      // TODO - store as compact bytea
-				symbol.ImplementationRanges, // TODO - store as compact bytea
-				symbol.TypeDefinitionRanges, // TODO - store as compact bytea
+				definitionRanges,
+				referenceRanges,
+				implementationRanges,
+				typeDefinitionRanges,
 			); err != nil {
 				return err
 			}
@@ -139,3 +159,24 @@ SELECT
 FROM t_codeintel_scip_symbols source
 ON CONFLICT DO NOTHING
 `
+
+func compactRange(r []int32) ([]byte, error) {
+	switch len(r) {
+	case 3:
+		return compactIntegerValues(r[0], r[1], r[0], r[2])
+	case 4:
+		return compactIntegerValues(r[0], r[1], r[2], r[3])
+
+	default:
+		return nil, fmt.Errorf("unexpected range length")
+	}
+}
+
+func compactIntegerValues(vs ...int32) ([]byte, error) {
+	buf := bytes.Buffer{}
+	if err := binary.Write(&buf, binary.LittleEndian, vs); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
