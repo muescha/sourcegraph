@@ -274,15 +274,9 @@ const isInteractiveOccurrence = (occurence: Occurrence): boolean => {
 }
 
 export const tokensAsLinks = ({ history, blobInfo, preloadGoToDefinition }: TokensAsLinksConfiguration): Extension => {
-    /**
-     * Prefer precise code intelligence ranges, fall back to making certain Occurences interactive.
-     */
-    const ranges =
-        blobInfo.stencil && blobInfo.stencil.length > 0
-            ? blobInfo.stencil.map(range => range)
-            : Occurrence.fromInfo(blobInfo)
-                  .filter(isInteractiveOccurrence)
-                  .map(({ range }) => range)
+    const ranges = Occurrence.fromInfo(blobInfo)
+        .filter(isInteractiveOccurrence)
+        .map(({ range }) => range)
 
     const referencesLinks =
         ranges.map(range => ({
@@ -297,8 +291,12 @@ export const tokensAsLinks = ({ history, blobInfo, preloadGoToDefinition }: Toke
         tokenLinks.init(() => referencesLinks),
         preloadGoToDefinition ? ViewPlugin.define(view => new DefinitionManager(view, blobInfo)) : [],
         EditorView.domEventHandlers({
+            contextmenu(event) {
+                console.log(event)
+            },
             click(event: MouseEvent) {
                 const target = event.target as HTMLElement
+                console.log({ target, cmd: event.metaKey })
 
                 // Check to see if the clicked target is a token link.
                 // If it is, push the link to the history stack.
