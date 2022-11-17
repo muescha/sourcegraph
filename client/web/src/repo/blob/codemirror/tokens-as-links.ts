@@ -1,3 +1,4 @@
+import * as H from 'history'
 import { Extension, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, DecorationSet, EditorView, PluginValue, ViewPlugin, ViewUpdate } from '@codemirror/view'
 import { History } from 'history'
@@ -7,12 +8,19 @@ import { DeepNonNullable } from 'utility-types'
 
 import { logger, toPositionOrRangeQueryParameter } from '@sourcegraph/common'
 import { Occurrence, SyntaxKind } from '@sourcegraph/shared/src/codeintel/scip'
-import { toPrettyBlobURL, UIRange } from '@sourcegraph/shared/src/util/url'
+import { parseRepoURI, toPrettyBlobURL, toURIWithPath, UIRange } from '@sourcegraph/shared/src/util/url'
 
 import { BlobInfo } from '../Blob'
 import { DefinitionResponse, fetchDefinitionsFromRanges } from '../definitions'
 
 import { SelectedLineRange, selectedLines } from './linenumbers'
+import { Remote } from 'comlink'
+import { FlatExtensionHostAPI } from '@sourcegraph/shared/src/api/contract'
+import { proxySubscribable } from '@sourcegraph/shared/src/api/extension/api/common'
+import { wrapRemoteObservable } from '@sourcegraph/shared/src/api/client/api/common'
+import { TextDocumentPositionParameters } from '@sourcegraph/client-api'
+import { getDefinitionURL } from '@sourcegraph/shared/src/hover/actions'
+import { loadOptions } from '@babel/core'
 
 interface TokenLink {
     range: UIRange
@@ -171,16 +179,15 @@ function tokenLinksToRangeSet(view: EditorView, links: TokenLink[]): DecorationS
     const builder = new RangeSetBuilder<Decoration>()
 
     try {
-        for (const { range, url } of links) {
+        for (const { range } of links) {
             const from = view.state.doc.line(range.start.line + 1).from + range.start.character
             const to = view.state.doc.line(range.end.line + 1).from + range.end.character
             const decoration = Decoration.mark({
                 attributes: {
                     class: 'sourcegraph-token-link',
-                    href: url,
                     'data-token-link': '',
                 },
-                tagName: 'a',
+                tagName: 'span',
             })
             builder.add(from, to, decoration)
         }
@@ -239,6 +246,7 @@ const tokenLinks = StateField.define<TokenLink[]>({
 })
 
 interface TokensAsLinksConfiguration {
+    codeintel?: Remote<FlatExtensionHostAPI>
     history: History
     blobInfo: BlobInfo
     preloadGoToDefinition: boolean
@@ -273,7 +281,12 @@ const isInteractiveOccurrence = (occurence: Occurrence): boolean => {
     return INTERACTIVE_OCCURRENCE_KINDS.has(occurence.kind)
 }
 
-export const tokensAsLinks = ({ history, blobInfo, preloadGoToDefinition }: TokensAsLinksConfiguration): Extension => {
+export const tokensAsLinks = ({
+    codeintel,
+    history,
+    blobInfo,
+    preloadGoToDefinition,
+}: TokensAsLinksConfiguration): Extension => {
     const ranges = Occurrence.fromInfo(blobInfo)
         .filter(isInteractiveOccurrence)
         .map(({ range }) => range)
@@ -291,7 +304,54 @@ export const tokensAsLinks = ({ history, blobInfo, preloadGoToDefinition }: Toke
         tokenLinks.init(() => referencesLinks),
         preloadGoToDefinition ? ViewPlugin.define(view => new DefinitionManager(view, blobInfo)) : [],
         EditorView.domEventHandlers({
-            contextmenu(event) {
+            contextmenu(event, editor) {
+                if (event.shiftKey) {
+                    return
+                }
+                const coords: IScreenCoord = {
+                    x: event.clientX,
+                    y: event.clientY,
+                }
+                const position = editor.posAtCoords(coords)
+                if (position === null) {
+                    return
+                }
+                if (!codeintel) {
+                    return
+                }
+                event.preventDefault()
+                const cmLine = editor.state.doc.lineAt(position)
+                const line = cmLine.number - 1
+                const uri = toURIWithPath(blobInfo)
+                const character = position - cmLine.from
+                const menu = document.createElement('div')
+                const definition = document.createElement('div')
+                definition.innerHTML = 'Go to definition'
+                definition.classList.add('codeintel-contextmenu-item')
+                // eslint-disable-next-line @typescript-eslint/no-misused-promises
+                definition.addEventListener('click', () => {
+                    goToDefinition(history, codeintel, {
+                        position: { line, character },
+                        textDocument: { uri },
+                    }).then(
+                        () => {},
+                        () => {}
+                    )
+                })
+                menu.append(definition)
+
+                const references = document.createElement('div')
+                references.innerHTML = 'Find references'
+                references.classList.add('codeintel-contextmenu-item')
+                menu.append(references)
+
+                const browserMenu = document.createElement('div')
+                browserMenu.innerHTML = 'Browser context menu shift+right-click'
+                browserMenu.classList.add('codeintel-contextmenu-item')
+                menu.append(browserMenu)
+                console.log(menu)
+                showTooltip(editor, menu, coords)
+
                 console.log(event)
             },
             click(event: MouseEvent) {
@@ -307,4 +367,70 @@ export const tokensAsLinks = ({ history, blobInfo, preloadGoToDefinition }: Toke
             },
         }),
     ]
+}
+
+async function goToDefinition(
+    history: H.History,
+    codeintel: Remote<FlatExtensionHostAPI>,
+    params: TextDocumentPositionParameters
+): Promise<void> {
+    const definition = await codeintel.getDefinition(params)
+    // eslint-disable-next-line ban/ban
+    await wrapRemoteObservable(definition).forEach(result => {
+        if (result.isLoading) {
+            return
+        }
+        if (result.result.length === 1) {
+            const location = result.result[0]
+            const uri = parseRepoURI(location.uri)
+            if (uri.filePath && location.range) {
+                const href = toPrettyBlobURL({
+                    repoName: uri.repoName,
+                    revision: uri.revision,
+                    filePath: uri.filePath,
+                    position: { line: location.range.start.line + 1, character: location.range.start.character + 1 },
+                })
+                console.log({ href })
+                history.push(href)
+            }
+        }
+    })
+}
+
+interface IScreenCoord {
+    x: number
+    y: number
+}
+
+function showTooltip(editor: EditorView, element: HTMLElement, coords: IScreenCoord): void {
+    let top = coords.y // - editor.contentHeight
+
+    const tooltip = document.createElement('div')
+    tooltip.classList.add('codeintel-tooltip')
+    tooltip.style.left = `${coords.x}px`
+    tooltip.style.top = `${top}px`
+    tooltip.append(element)
+    document.body.append(tooltip)
+    let counter = 0
+    const tooltipCloseListener = (): void => {
+        counter += 1
+        if (counter === 1) {
+            return
+        }
+        tooltip.remove()
+        document.removeEventListener('click', tooltipCloseListener)
+        document.removeEventListener('contextmenu', tooltipCloseListener)
+    }
+    document.addEventListener('contextmenu', tooltipCloseListener)
+    document.addEventListener('click', tooltipCloseListener)
+    // TODO: register up/down arrows
+
+    // Measure and reposition after rendering first version
+    requestAnimationFrame(() => {
+        // top += editor.contentHeight
+        top -= tooltip.offsetHeight
+
+        tooltip.style.left = `${coords.x}px`
+        tooltip.style.top = `${top}px`
+    })
 }

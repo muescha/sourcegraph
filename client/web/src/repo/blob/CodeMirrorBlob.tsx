@@ -17,7 +17,7 @@ import {
 import { editorHeight, useCodeMirror } from '@sourcegraph/shared/src/components/CodeMirrorEditor'
 import { Shortcut } from '@sourcegraph/shared/src/react-shortcuts'
 import { parseQueryAndHash } from '@sourcegraph/shared/src/util/url'
-import { useLocalStorage } from '@sourcegraph/wildcard'
+import { useLocalStorage, useObservable } from '@sourcegraph/wildcard'
 
 import { useExperimentalFeatures } from '../../stores'
 
@@ -31,6 +31,8 @@ import { search } from './codemirror/search'
 import { sourcegraphExtensions } from './codemirror/sourcegraph-extensions'
 import { tokensAsLinks } from './codemirror/tokens-as-links'
 import { isValidLineRange } from './codemirror/utils'
+import { from, of } from 'rxjs'
+import { createExtensionHostAPI } from '@sourcegraph/shared/src/api/extension/extensionHostApi'
 
 const staticExtensions: Extension = [
     EditorState.readOnly.of(true),
@@ -108,6 +110,8 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
 
     const [useFileSearch, setUseFileSearch] = useLocalStorage('blob.overrideBrowserFindOnPage', true)
 
+    const codeintel = useObservable(from(extensionsController?.extHostAPI || Promise.resolve(undefined)))
+
     const [container, setContainer] = useState<HTMLDivElement | null>(null)
     // This is used to avoid reinitializing the editor when new locations in the
     // same file are opened inside the reference panel.
@@ -178,6 +182,7 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
             }),
             tokenKeyboardNavigation
                 ? tokensAsLinks({
+                      codeintel,
                       history,
                       blobInfo,
                       preloadGoToDefinition,
@@ -185,15 +190,15 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
                 : [],
             syntaxHighlight.of(blobInfo),
             pin.init(() => (hasPin ? position : null)),
-            extensionsController !== null && !navigateToLineOnAnyClick
-                ? sourcegraphExtensions({
-                      blobInfo,
-                      initialSelection: position,
-                      extensionsController,
-                      disableStatusBar,
-                      disableDecorations,
-                  })
-                : [],
+            // extensionsController !== null && !navigateToLineOnAnyClick
+            //     ? sourcegraphExtensions({
+            //           blobInfo,
+            //           initialSelection: position,
+            //           extensionsController,
+            //           disableStatusBar,
+            //           disableDecorations,
+            //       })
+            //     : [],
             blobPropsCompartment.of(blobProps),
             blameDecorationsCompartment.of(blameDecorations),
             settingsCompartment.of(settings),
@@ -210,7 +215,7 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
         // further below. However they are still needed here because we need to
         // set initial values when we re-initialize the editor.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [onSelection, blobInfo, extensionsController, disableStatusBar, disableDecorations]
+        [onSelection, blobInfo, extensionsController, disableStatusBar, disableDecorations, codeintel]
     )
 
     const editorRef = useRef<EditorView>()

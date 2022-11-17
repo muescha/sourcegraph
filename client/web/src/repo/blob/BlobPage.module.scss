@@ -24,3 +24,11 @@
         box-shadow: var(--focus-box-shadow);
     }
 }
+
+:global(.codeintel-tooltip) {
+    position: absolute;
+}
+
+:global(.codeintel-contextmenu-item) {
+    background-color: white;
+}
