@@ -63,10 +63,10 @@ func (s *store) WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID
 				uploadID,
 				symbol.SymbolName,
 				documentLookupID,
-				symbol.DefinitionRanges,
-				symbol.ReferenceRanges,
-				symbol.ImplementationRanges,
-				symbol.TypeDefinitionRanges,
+				symbol.DefinitionRanges,     // TODO - store as compact bytea
+				symbol.ReferenceRanges,      // TODO - store as compact bytea
+				symbol.ImplementationRanges, // TODO - store as compact bytea
+				symbol.TypeDefinitionRanges, // TODO - store as compact bytea
 			); err != nil {
 				return err
 			}
