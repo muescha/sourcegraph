@@ -4442,7 +4442,7 @@ type GitCommit implements Node {
     """
     List statistics for each language present in the repository.
     """
-    languageStatistics: [LanguageStatistics!]!
+    languageStatistics(path: String): [LanguageStatistics!]!
     """
     The log of commits consisting of this commit and its ancestors.
     """

@@ -76,6 +76,11 @@ func NewGitCommitResolver(db database.DB, gsClient gitserver.Client, repo *Repos
 		gitRepo:         repo.RepoName(),
 		oid:             GitObjectID(id),
 		commit:          commit,
+		logger: log.Scoped("gitCommitResolver", "resolve a specific commit of a repository").
+			With(log.Object("repoCommit",
+				log.String("repoName", string(repo.Name())),
+				log.Int32("repoID", int32(repo.IDInt32())),
+				log.String("commitID", string(id)))),
 	}
 }
 
@@ -283,7 +288,7 @@ func (r *GitCommitResolver) Languages(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	inventory, err := backend.NewRepos(r.logger, r.db, r.gitserverClient).GetInventory(ctx, repo, api.CommitID(r.oid), false)
+	inventory, err := backend.NewRepos(r.logger, r.db, r.gitserverClient).GetInventory(ctx, repo, api.CommitID(r.oid), "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -295,13 +300,21 @@ func (r *GitCommitResolver) Languages(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-func (r *GitCommitResolver) LanguageStatistics(ctx context.Context) ([]*languageStatisticsResolver, error) {
+type LanguageStatisticsArgs struct {
+	Path *string
+}
+
+func (r *GitCommitResolver) LanguageStatistics(ctx context.Context, args *LanguageStatisticsArgs) ([]*languageStatisticsResolver, error) {
 	repo, err := r.repoResolver.repo(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	inventory, err := backend.NewRepos(r.logger, r.db, r.gitserverClient).GetInventory(ctx, repo, api.CommitID(r.oid), false)
+	path := ""
+	if args.Path != nil {
+		path = *args.Path
+	}
+	inventory, err := backend.NewRepos(r.logger, r.db, r.gitserverClient).GetInventory(ctx, repo, api.CommitID(r.oid), path, false)
 	if err != nil {
 		return nil, err
 	}
