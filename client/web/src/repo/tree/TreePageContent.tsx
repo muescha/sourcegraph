@@ -256,6 +256,22 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                     </div>
                     <div className="col-6">
                         <Card className="card">
+                            <CardHeader>Intelligence</CardHeader>
+                            <div className="p-4">Some really good intelligence here</div>
+                            <ul>
+                                <li>
+                                    "High-signal" symbols - high page rank, named "main", top-level/exported, most
+                                    clicked on
+                                </li>
+                                <li>File extension ring chart</li>
+                                <li>Commit frequency over time</li>
+                                <li>Any major code quality or security issues detected</li>
+                                <li>Test coverage</li>
+                                <li>Custom insights defined in a .insights file</li>
+                                <li>Recently visited subfiles</li>
+                            </ul>
+                        </Card>
+                        <Card className="card mt-3">
                             <CardHeader>Commits</CardHeader>
                             {/* TODO(beyang): ultra-compact mode and collapse date timestamps into headers */}
                             <FilteredConnection<
