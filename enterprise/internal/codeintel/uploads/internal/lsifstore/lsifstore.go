@@ -27,6 +27,12 @@ type LsifStore interface {
 	IDsWithMeta(ctx context.Context, ids []int) ([]int, error)
 	ReconcileCandidates(ctx context.Context, batchSize int) ([]int, error)
 
+	// Stream
+	ScanDocuments(ctx context.Context, id int, f func(path string, ranges map[precise.ID]precise.RangeData) error) (err error)
+	ScanResultChunks(ctx context.Context, id int, f func(idx int, resultChunk precise.ResultChunkData) error) (err error)
+	ScanLocations(ctx context.Context, id int, f func(scheme, identifier, monikerType string, locations []precise.LocationData) error) (err error)
+
+	// SCIP
 	InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash [256]byte, rawSCIPPayload []byte) (int, error)
 	WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID int, symbols []conversion.ProcessedSymbolData) (uint32, error)
 }
