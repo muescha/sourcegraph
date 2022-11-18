@@ -6,10 +6,90 @@ import * as H from 'history'
 import { TextDocumentPositionParameters } from '@sourcegraph/client-api'
 import { wrapRemoteObservable } from '@sourcegraph/shared/src/api/client/api/common'
 import { FlatExtensionHostAPI } from '@sourcegraph/shared/src/api/contract'
+import { Occurrence, Position, Range } from '@sourcegraph/shared/src/codeintel/scip'
 import { parseRepoURI, toPrettyBlobURL, toURIWithPath } from '@sourcegraph/shared/src/util/url'
 
 import { BlobInfo } from '../Blob'
-import { Position, Range } from '@sourcegraph/shared/src/codeintel/scip'
+
+import { syntaxHighlight } from './highlight'
+import { isInteractiveOccurrence } from './tokens-as-links'
+
+function occurrenceAtEvent(
+    view: EditorView,
+    event: MouseEvent,
+    blobInfo: BlobInfo
+): { occurrence: Occurrence; position: Position; coords: Coordinates } | undefined {
+    const atEvent = positionAtEvent(view, event, blobInfo)
+    if (!atEvent) {
+        console.log({ atEvent })
+        return
+    }
+    const { position, coords } = atEvent
+    console.log({ position })
+    const table = view.state.facet(syntaxHighlight)
+    for (
+        let index = table.lineIndex[position.line];
+        index !== undefined &&
+        index < table.occurrences.length &&
+        table.occurrences[index].range.start.line === position.line;
+        index++
+    ) {
+        const occurrence = table.occurrences[index]
+        if (occurrence.range.contains(position)) {
+            return { occurrence, position, coords }
+        }
+    }
+    return
+}
+
+function goToDefinitionAtEvent(
+    view: EditorView,
+    event: MouseEvent,
+    blobInfo: BlobInfo,
+    history: H.History,
+    codeintel: Remote<FlatExtensionHostAPI>
+): Promise<() => void> {
+    const atEvent = occurrenceAtEvent(view, event, blobInfo)
+    console.log({ atEvent })
+    if (!atEvent) {
+        return Promise.resolve(() => {})
+    }
+    const { occurrence, position, coords } = atEvent
+    console.log({ occurrence })
+    if (!isInteractiveOccurrence(occurrence)) {
+        return Promise.resolve(() => {})
+    }
+    const fromCache = definitionCache.get(occurrence)
+    if (fromCache) {
+        return fromCache
+    }
+    const uri = toURIWithPath(blobInfo)
+    const promise = goToDefinition(view, history, codeintel, { position, textDocument: { uri } }, coords)
+    definitionCache.set(occurrence, promise)
+    return promise
+}
+function positionAtEvent(
+    view: EditorView,
+    event: MouseEvent,
+    blobInfo: BlobInfo
+): { position: Position; coords: Coordinates } | undefined {
+    const coords: Coordinates = {
+        x: event.clientX,
+        y: event.clientY,
+    }
+    const position = view.posAtCoords(coords)
+    if (position === null) {
+        return
+    }
+    event.preventDefault()
+    const cmLine = view.state.doc.lineAt(position)
+    const line = cmLine.number - 1
+    const character = position - cmLine.from
+    console.log({ line, character })
+    return { position: new Position(line, character), coords }
+}
+
+const definitionCache = new Map<Occurrence, Promise<() => void>>()
 
 export function contextMenu(
     codeintel: Remote<FlatExtensionHostAPI> | undefined,
@@ -18,50 +98,53 @@ export function contextMenu(
 ): Extension {
     return EditorView.domEventHandlers({
         mouseover(event, view) {
-            if (!event.metaKey) {
-                return
-            }
-            console.log({ event })
+            // if (!codeintel) {
+            //     return
+            // }
+            // goToDefinitionAtEvent(view, event, blobInfo, history, codeintel).then(
+            //     () => {},
+            //     () => {}
+            // )
+        },
+        click(event, view) {
+            // if (!codeintel) {
+            //     return
+            // }
+            // if (!event.metaKey) {
+            //     return
+            // }
+            // const spinner = new Spinner({
+            //     x: event.clientX,
+            //     y: event.clientY,
+            // })
+            // goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
+            //     .then(
+            //         action => action(),
+            //         () => {}
+            //     )
+            //     .finally(() => spinner.stop())
         },
         contextmenu(event, view) {
             if (event.shiftKey) {
                 return
             }
-            const coords: Coordinates = {
-                x: event.clientX,
-                y: event.clientY,
-            }
-            const position = view.posAtCoords(coords)
-            if (position === null) {
-                return
-            }
             if (!codeintel) {
                 return
             }
-            event.preventDefault()
-            const cmLine = view.state.doc.lineAt(position)
-            const line = cmLine.number - 1
-            const uri = toURIWithPath(blobInfo)
-            const character = position - cmLine.from
+            const atEvent = positionAtEvent(view, event, blobInfo)
+            if (!atEvent) {
+                return
+            }
+            const definitionAction = goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
+            const { coords } = atEvent
             const menu = document.createElement('div')
             const definition = document.createElement('div')
             definition.innerHTML = 'Go to definition'
             definition.classList.add('codeintel-contextmenu-item')
             definition.classList.add('codeintel-contextmenu-item-action')
-            const definitionAction = goToDefinition(
-                view,
-                history,
-                codeintel,
-                {
-                    position: { line, character },
-                    textDocument: { uri },
-                },
-                coords
-            )
 
             definition.addEventListener('click', () => {
                 const spinner = new Spinner(coords)
-                console.log('click!')
                 definitionAction
                     .then(
                         action => action(),
@@ -81,10 +164,7 @@ export function contextMenu(
             browserMenu.innerHTML = 'Browser context menu shift+right-click'
             browserMenu.classList.add('codeintel-contextmenu-item')
             menu.append(browserMenu)
-            console.log(menu)
             showTooltip(view, menu, coords)
-
-            console.log(event)
         },
     })
 }
@@ -137,7 +217,7 @@ async function goToDefinition(
     coords: Coordinates
 ): Promise<() => void> {
     const definition = await codeintel.getDefinition(params)
-    // eslint-disable-next-line ban/ban
+
     const result = await wrapRemoteObservable(definition).toPromise()
     if (result.isLoading) {
         return () => {}
@@ -184,9 +264,15 @@ async function goToDefinition(
             return () => history.push(href)
         }
     }
-    console.log('MULTIPLEDEFS')
-    //  TODO: Handle when more than one result.
-    return () => {}
+    const uri = parseRepoURI(params.textDocument.uri)
+    const href = toPrettyBlobURL({
+        repoName: uri.repoName,
+        revision: uri.revision,
+        filePath: uri.filePath || 'FIXME_THIS_IS_A_BUG',
+        position: { line: params.position.line + 1, character: params.position.character + 1 },
+        viewState: 'def',
+    })
+    return () => history.push(href)
 }
 
 class Spinner {

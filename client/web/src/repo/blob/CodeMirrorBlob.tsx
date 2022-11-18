@@ -25,14 +25,13 @@ import { useExperimentalFeatures } from '../../stores'
 import { BlobInfo, BlobProps, updateBrowserHistoryIfChanged } from './Blob'
 import { blobPropsFacet } from './codemirror'
 import { showGitBlameDecorations } from './codemirror/blame-decorations'
+import { contextMenu } from './codemirror/context-menu'
 import { syntaxHighlight } from './codemirror/highlight'
 import { pin, updatePin } from './codemirror/hovercard'
 import { selectableLineNumbers, SelectedLineRange, selectLines } from './codemirror/linenumbers'
 import { search } from './codemirror/search'
-import { tokensAsLinks } from './codemirror/tokens-as-links'
-import { isValidLineRange } from './codemirror/utils'
-import { contextMenu } from './codemirror/context-menu'
 import { sourcegraphExtensions } from './codemirror/sourcegraph-extensions'
+import { isValidLineRange } from './codemirror/utils'
 
 const staticExtensions: Extension = [
     EditorState.readOnly.of(true),

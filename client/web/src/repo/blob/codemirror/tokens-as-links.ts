@@ -267,7 +267,7 @@ const INTERACTIVE_OCCURRENCE_KINDS = new Set([
     SyntaxKind.IdentifierAttribute,
 ])
 
-const isInteractiveOccurrence = (occurence: Occurrence): boolean => {
+export const isInteractiveOccurrence = (occurence: Occurrence): boolean => {
     if (!occurence.kind) {
         return false
     }
