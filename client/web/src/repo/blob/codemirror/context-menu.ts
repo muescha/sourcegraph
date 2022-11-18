@@ -9,6 +9,7 @@ import { FlatExtensionHostAPI } from '@sourcegraph/shared/src/api/contract'
 import { parseRepoURI, toPrettyBlobURL, toURIWithPath } from '@sourcegraph/shared/src/util/url'
 
 import { BlobInfo } from '../Blob'
+import { Position, Range } from '@sourcegraph/shared/src/codeintel/scip'
 
 export function contextMenu(
     codeintel: Remote<FlatExtensionHostAPI> | undefined,
@@ -142,11 +143,32 @@ async function goToDefinition(
         return () => {}
     }
     if (result.result.length === 0) {
-        const element = document.createElement('div')
-        element.textContent = 'No definition found'
-        element.style.color = 'white'
-        element.style.backgroundColor = 'deepskyblue'
-        return () => showTooltip(view, element, coords, 2000)
+        return () => {
+            const element = document.createElement('div')
+            element.textContent = 'No definition found'
+            element.style.color = 'white'
+            element.style.backgroundColor = 'deepskyblue'
+            showTooltip(view, element, coords, 2000)
+        }
+    }
+    for (const location of result.result) {
+        if (location.uri === params.textDocument.uri && location.range && location.range) {
+            const requestPosition = new Position(params.position.line, params.position.character)
+            const {
+                start: { line: startLine, character: startCharacter },
+                end: { line: endLine, character: endCharacter },
+            } = location.range
+            const resultRange = Range.fromNumbers(startLine, startCharacter, endLine, endCharacter)
+            if (resultRange.contains(requestPosition)) {
+                return () => {
+                    const element = document.createElement('div')
+                    element.textContent = 'You are at the definition'
+                    element.style.color = 'white'
+                    element.style.backgroundColor = 'deepskyblue'
+                    showTooltip(view, element, coords, 2000)
+                }
+            }
+        }
     }
     //  TODO: Handle when already at the definition
     if (result.result.length === 1) {
@@ -162,6 +184,7 @@ async function goToDefinition(
             return () => history.push(href)
         }
     }
+    console.log('MULTIPLEDEFS')
     //  TODO: Handle when more than one result.
     return () => {}
 }
