@@ -94,7 +94,7 @@ const definitionCache = new Map<Occurrence, Promise<() => void>>()
 // The `keydown` handler in EditorView.domEventHandler doesn't capture events
 // when the editor is out of focus.
 let globalViewHack: EditorView | undefined
-const toggleClickableClass = (event: KeyboardEvent): void => {
+const globalEventHandler = (event: KeyboardEvent): void => {
     if (!globalViewHack) {
         return
     }
@@ -110,23 +110,20 @@ export function contextMenu(
     blobInfo: BlobInfo,
     history: H.History
 ): Extension {
-    document.removeEventListener('keydown', toggleClickableClass)
-    document.addEventListener('keydown', toggleClickableClass)
-    document.removeEventListener('keyup', toggleClickableClass)
-    document.addEventListener('keyup', toggleClickableClass)
+    document.removeEventListener('keydown', globalEventHandler)
+    document.addEventListener('keydown', globalEventHandler)
+    document.removeEventListener('keyup', globalEventHandler)
+    document.addEventListener('keyup', globalEventHandler)
 
     return [
         EditorView.domEventHandlers({
-            keydown(event, view) {
-                toggleClickableClass(view, event.metaKey)
-            },
             mouseover(event, view) {
                 globalViewHack = view
 
                 if (!codeintel) {
                     return
                 }
-                toggleClickableClass(view, event.metaKey)
+                // toggleClickableClass(view, event.metaKey)
                 goToDefinitionAtEvent(view, event, blobInfo, history, codeintel).then(
                     () => {},
                     () => {}
