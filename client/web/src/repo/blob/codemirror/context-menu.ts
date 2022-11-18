@@ -1,5 +1,5 @@
-import { Extension } from '@codemirror/state'
-import { EditorView, ViewPlugin } from '@codemirror/view'
+import { EditorSelection, Extension } from '@codemirror/state'
+import { EditorView, keymap, ViewPlugin } from '@codemirror/view'
 import { Remote } from 'comlink'
 import * as H from 'history'
 
@@ -15,7 +15,26 @@ import { syntaxHighlight } from './highlight'
 import { isInteractiveOccurrence } from './tokens-as-links'
 
 import styles from './context-menu.module.scss'
-import { COMPLETIONSTATEMENT_TYPES } from '@babel/types'
+
+function occurrenceAtPosition(
+    view: EditorView,
+    position: Position
+): { occurrence: Occurrence; position: Position } | undefined {
+    const table = view.state.facet(syntaxHighlight)
+    for (
+        let index = table.lineIndex[position.line];
+        index !== undefined &&
+        index < table.occurrences.length &&
+        table.occurrences[index].range.start.line === position.line;
+        index++
+    ) {
+        const occurrence = table.occurrences[index]
+        if (occurrence.range.contains(position)) {
+            return { occurrence, position }
+        }
+    }
+    return
+}
 
 function occurrenceAtEvent(
     view: EditorView,
@@ -27,20 +46,11 @@ function occurrenceAtEvent(
         return
     }
     const { position, coords } = atEvent
-    const table = view.state.facet(syntaxHighlight)
-    for (
-        let index = table.lineIndex[position.line];
-        index !== undefined &&
-        index < table.occurrences.length &&
-        table.occurrences[index].range.start.line === position.line;
-        index++
-    ) {
-        const occurrence = table.occurrences[index]
-        if (occurrence.range.contains(position)) {
-            return { occurrence, position, coords }
-        }
+    const occurrence = occurrenceAtPosition(view, position)
+    if (!occurrence) {
+        return
     }
-    return
+    return { ...occurrence, coords }
 }
 
 function goToDefinitionAtEvent(
@@ -81,10 +91,14 @@ function positionAtEvent(
         return
     }
     event.preventDefault()
+    return { position: scipPositionAtCodemirrorPosition(view, position), coords }
+}
+
+function scipPositionAtCodemirrorPosition(view: EditorView, position: number): Position {
     const cmLine = view.state.doc.lineAt(position)
     const line = cmLine.number - 1
     const character = position - cmLine.from
-    return { position: new Position(line, character), coords }
+    return new Position(line, character)
 }
 
 const definitionCache = new Map<Occurrence, Promise<() => void>>()
@@ -116,6 +130,41 @@ export function contextMenu(
     document.addEventListener('keyup', globalEventHandler)
 
     return [
+        keymap.of([
+            {
+                key: 'ArrowDown',
+                run(view) {
+                    console.log(view.state.selection)
+                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                    console.log({ position })
+                    const line = position.line + 1
+                    const table = view.state.facet(syntaxHighlight)
+                    for (
+                        let index = table.lineIndex[line];
+                        index !== undefined &&
+                        index < table.occurrences.length &&
+                        table.occurrences[index].range.start.line >= line;
+                        index++
+                    ) {
+                        const occurrence = table.occurrences[index]
+                        if (!isInteractiveOccurrence(occurrence)) {
+                            continue
+                        }
+                        console.log({ occurrence })
+                        const startLine = view.state.doc.line(occurrence.range.start.line + 1).from
+                        const endLine = view.state.doc.line(occurrence.range.end.line + 1).from
+                        const start = startLine + occurrence.range.start.character
+                        const end = endLine + occurrence.range.end.character
+                        console.log({ start, end, text: view.state.doc.sliceString(start, end) })
+                        view.dispatch({ selection: EditorSelection.range(start, end) })
+                        // setTimeout(() => {
+                        // }, 100)
+                        return true
+                    }
+                    return
+                },
+            },
+        ]),
         EditorView.domEventHandlers({
             mouseover(event, view) {
                 globalViewHack = view
