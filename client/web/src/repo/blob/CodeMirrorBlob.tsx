@@ -31,6 +31,8 @@ import { selectableLineNumbers, SelectedLineRange, selectLines } from './codemir
 import { search } from './codemirror/search'
 import { tokensAsLinks } from './codemirror/tokens-as-links'
 import { isValidLineRange } from './codemirror/utils'
+import { contextMenu } from './codemirror/context-menu'
+import { sourcegraphExtensions } from './codemirror/sourcegraph-extensions'
 
 const staticExtensions: Extension = [
     EditorState.readOnly.of(true),
@@ -178,25 +180,18 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
                 initialSelection: position.line !== undefined ? position : null,
                 navigateToLineOnAnyClick: navigateToLineOnAnyClick ?? false,
             }),
-            tokenKeyboardNavigation
-                ? tokensAsLinks({
-                      codeintel,
-                      history,
-                      blobInfo,
-                      preloadGoToDefinition,
-                  })
-                : [],
+            tokenKeyboardNavigation ? contextMenu(codeintel, blobInfo, history) : [],
             syntaxHighlight.of(blobInfo),
             pin.init(() => (hasPin ? position : null)),
-            // extensionsController !== null && !navigateToLineOnAnyClick
-            //     ? sourcegraphExtensions({
-            //           blobInfo,
-            //           initialSelection: position,
-            //           extensionsController,
-            //           disableStatusBar,
-            //           disableDecorations,
-            //       })
-            //     : [],
+            !tokenKeyboardNavigation && extensionsController !== null && !navigateToLineOnAnyClick
+                ? sourcegraphExtensions({
+                      blobInfo,
+                      initialSelection: position,
+                      extensionsController,
+                      disableStatusBar,
+                      disableDecorations,
+                  })
+                : [],
             blobPropsCompartment.of(blobProps),
             blameDecorationsCompartment.of(blameDecorations),
             settingsCompartment.of(settings),

@@ -32,3 +32,8 @@
 :global(.codeintel-contextmenu-item) {
     background-color: white;
 }
+
+:global(.codeintel-contextmenu-item-action:hover) {
+    background-color: var(--color-bg-2);
+    cursor: pointer;
+}
