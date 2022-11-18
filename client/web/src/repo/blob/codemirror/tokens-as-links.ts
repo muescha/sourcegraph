@@ -407,6 +407,7 @@ function showTooltip(editor: EditorView, element: HTMLElement, coords: IScreenCo
 
     const tooltip = document.createElement('div')
     tooltip.classList.add('codeintel-tooltip')
+    editor.hei
     tooltip.style.left = `${coords.x}px`
     tooltip.style.top = `${top}px`
     tooltip.append(element)
@@ -428,7 +429,7 @@ function showTooltip(editor: EditorView, element: HTMLElement, coords: IScreenCo
     // Measure and reposition after rendering first version
     requestAnimationFrame(() => {
         // top += editor.contentHeight
-        top -= tooltip.offsetHeight
+        // top -= tooltip.offsetHeight
 
         tooltip.style.left = `${coords.x}px`
         tooltip.style.top = `${top}px`
