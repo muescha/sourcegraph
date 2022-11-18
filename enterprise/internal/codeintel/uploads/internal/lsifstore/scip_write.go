@@ -1,8 +1,10 @@
 package lsifstore
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"io"
 	"sync/atomic"
 
 	"github.com/keegancsmith/sqlf"
@@ -60,19 +62,19 @@ func (s *store) WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID
 
 	inserter := func(inserter *batch.Inserter) error {
 		for _, symbol := range symbols {
-			definitionRanges, err := compactRanges(symbol.DefinitionRanges)
+			definitionRanges, err := encodeRanges(symbol.DefinitionRanges)
 			if err != nil {
 				return err
 			}
-			referenceRanges, err := compactRanges(symbol.ReferenceRanges)
+			referenceRanges, err := encodeRanges(symbol.ReferenceRanges)
 			if err != nil {
 				return err
 			}
-			implementationRanges, err := compactRanges(symbol.ImplementationRanges)
+			implementationRanges, err := encodeRanges(symbol.ImplementationRanges)
 			if err != nil {
 				return err
 			}
-			typeDefinitionRanges, err := compactRanges(symbol.TypeDefinitionRanges)
+			typeDefinitionRanges, err := encodeRanges(symbol.TypeDefinitionRanges)
 			if err != nil {
 				return err
 			}
@@ -156,18 +158,74 @@ FROM t_codeintel_scip_symbols source
 ON CONFLICT DO NOTHING
 `
 
-func compactRanges(vs []int32) ([]byte, error) {
-	if len(vs) == 0 {
+func encodeRanges(vs []int32) (buf []byte, _ error) {
+	n := len(vs)
+
+	if n == 0 {
 		return nil, nil
 	}
-	if len(vs)%4 != 0 {
-		return nil, errors.Newf("unexpected range length - have %d but expected a multiple of 4", len(vs))
+	if n%4 != 0 {
+		return nil, errors.Newf("unexpected range length - have %d but expected a multiple of 4", n)
 	}
 
-	var buf []byte
-	for _, v := range vs {
-		buf = binary.AppendVarint(buf, int64(v))
+	last := int32(0)
+	for i := 0; i < n; i += 2 {
+		v := vs[i]
+		buf = binary.AppendVarint(buf, int64(v-last))
+		last = v
+	}
+
+	last = 0
+	for i := 1; i < n; i += 2 {
+		v := vs[i]
+		buf = binary.AppendVarint(buf, int64(v-last))
+		last = v
 	}
 
 	return buf, nil
+}
+
+func decodeRanges(encoded []byte) ([]int32, error) {
+	if len(encoded) == 0 {
+		return nil, nil
+	}
+
+	return decodeRangesFromReader(bytes.NewReader(encoded))
+}
+
+func decodeRangesFromReader(r io.ByteReader) ([]int32, error) {
+	splitDeltas := []int32{}
+	for {
+		v, err := binary.ReadVarint(r)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return nil, err
+		}
+
+		splitDeltas = append(splitDeltas, int32(v))
+	}
+
+	n := len(splitDeltas)
+	h := n / 2
+
+	if n%4 != 0 {
+		return nil, errors.Newf("unexpected number of encoded deltas - have %d but expected a multiple of 4", n)
+	}
+
+	lastLine := int32(0)
+	lastChar := int32(0)
+	lineDeltas := splitDeltas[:h]
+	charDeltas := splitDeltas[h:]
+
+	combined := make([]int32, 0, n)
+	for i := 0; i < h; i++ {
+		lastLine = lineDeltas[i] + lastLine
+		lastChar = charDeltas[i] + lastChar
+		combined = append(combined, lastLine, lastChar)
+	}
+
+	return combined, nil
 }
