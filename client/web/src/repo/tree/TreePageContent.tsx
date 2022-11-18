@@ -1,11 +1,11 @@
 import { mdiFileDocumentOutline, mdiFolderOutline } from '@mdi/js'
-import { Link, Icon, Card, CardHeader, Tooltip } from '@sourcegraph/wildcard'
-import React, { useCallback, useMemo, useState } from 'react'
+import { Link, Icon, Card, CardHeader, Tooltip, PieChart } from '@sourcegraph/wildcard'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import classNames from 'classnames'
 import { formatISO, subYears } from 'date-fns'
 import * as H from 'history'
-import { Observable } from 'rxjs'
+import { from, Observable, zip } from 'rxjs'
 import { map } from 'rxjs/operators'
 
 import { ContributableMenu } from '@sourcegraph/client-api'
@@ -22,7 +22,7 @@ import { ThemeProps } from '@sourcegraph/shared/src/theme'
 import { Button, Heading, Text, useObservable } from '@sourcegraph/wildcard'
 
 import { getFileDecorations } from '../../backend/features'
-import { queryGraphQL } from '../../backend/graphql'
+import { queryGraphQL, requestGraphQL } from '../../backend/graphql'
 import { FilteredConnection } from '../../components/FilteredConnection'
 import {
     GitCommitFields,
@@ -32,6 +32,8 @@ import {
     Scalars,
     TreeCommitsResult,
     TreePageRepositoryFields,
+    TreeStatsResult,
+    TreeStatsVariables,
 } from '../../graphql-operations'
 import { GitCommitNodeProps, GitCommitNode } from '../commits/GitCommitNode'
 import { gitCommitFragment } from '../commits/RepositoryCommitsPage'
@@ -120,6 +122,95 @@ export const fetchTreeCommits = memoizeObservable(
     args => `${args.repo}:${args.revspec}:${String(args.first)}:${String(args.filePath)}:${String(args.after)}`
 )
 
+interface TreeStatFields {
+    name: string
+    totalBytes: number
+    totalLines: number
+    proportionBytes: number
+    proportionLines: number
+    color: string
+}
+
+const fetchTreeStats = (args: {
+    repo: Scalars['String']
+    revspec: Scalars['String']
+    filePath: Scalars['String']
+}): Observable<TreeStatFields[]> => {
+    const treeStats = requestGraphQL<TreeStatsResult, TreeStatsVariables>(
+        gql`
+            query TreeStats($repo: String!, $revspec: String!, $filePath: String!) {
+                repository(name: $repo) {
+                    commit(rev: $revspec) {
+                        languageStatistics(path: $filePath) {
+                            name
+                            totalBytes
+                            totalLines
+                        }
+                    }
+                }
+            }
+        `,
+        args
+    ).pipe(map(dataOrThrowErrors))
+
+    const languageMap = from(import('linguist-languages')).pipe(
+        map(({ default: languagesMap }) => (language: string): string => {
+            const isLinguistLanguage = (language: string): language is keyof typeof languagesMap =>
+                Object.prototype.hasOwnProperty.call(languagesMap, language)
+
+            if (isLinguistLanguage(language)) {
+                return languagesMap[language].color ?? 'gray'
+            }
+
+            return 'gray'
+        })
+    )
+
+    return zip(treeStats, languageMap).pipe(
+        map(([data, getLangColor]) => {
+            if (!data.repository?.commit?.languageStatistics) {
+                return []
+            }
+
+            let totalBytes = 0
+            let totalLines = 0
+            for (const langStat of data.repository.commit.languageStatistics) {
+                totalBytes += langStat.totalBytes
+                totalLines += langStat.totalLines
+            }
+
+            const mergedLangStats = []
+            const otherLangStat = {
+                totalBytes: 0,
+                totalLines: 0,
+                proportionBytes: 0,
+                proportionLines: 0,
+                color: 'gray',
+                name: 'Other',
+            }
+            for (const langStat of data.repository.commit.languageStatistics) {
+                if (langStat.totalBytes / totalBytes > 0.01) {
+                    mergedLangStats.push({
+                        proportionBytes: langStat.totalBytes / totalBytes,
+                        proportionLines: langStat.totalLines / totalLines,
+                        color: getLangColor(langStat.name),
+                        ...langStat,
+                    })
+                } else {
+                    otherLangStat.totalBytes += langStat.totalBytes
+                    otherLangStat.totalLines += langStat.totalLines
+                }
+            }
+            if (otherLangStat.totalBytes > 0 || otherLangStat.totalLines > 0) {
+                otherLangStat.proportionBytes = otherLangStat.totalBytes / totalBytes
+                otherLangStat.proportionLines = otherLangStat.totalLines / totalLines
+                mergedLangStats.push(otherLangStat)
+            }
+            return mergedLangStats
+        })
+    )
+}
+
 interface TreePageContentProps extends ExtensionsControllerProps, ThemeProps, TelemetryProps, PlatformContextProps {
     filePath: string
     tree: TreeFields
@@ -153,6 +244,10 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                 [commitID, props.extensionsController, repo.name, tree.entries, tree.url]
             )
         ) ?? {}
+
+    const treeStats = useObservable(
+        useMemo(() => fetchTreeStats({ repo: repo.name, revspec: revision, filePath }), [repo.name, revision, filePath])
+    )
 
     const queryCommits = useCallback(
         (args: { first?: number }): Observable<TreeCommitsRepositoryCommit['ancestors']> => {
@@ -257,8 +352,21 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                     </div>
                     <div className="col-6">
                         <Card className="card">
-                            <CardHeader>Intelligence</CardHeader>
-                            <div className="p-4">Some really good intelligence here</div>
+                            <CardHeader>Muh languages</CardHeader>
+                            <div className="m-auto">
+                                {treeStats && (
+                                    <PieChart<TreeStatFields>
+                                        width={400}
+                                        height={400}
+                                        data={treeStats}
+                                        getDatumName={datum => datum.name}
+                                        getDatumValue={datum => datum.totalBytes}
+                                        getDatumColor={datum => datum.color}
+                                        getDatumLink={() => undefined}
+                                    />
+                                )}
+                            </div>
+                            {/* <div className="p-4">Some really good intelligence here</div>
                             <ul>
                                 <li>
                                     "High-signal" symbols - high page rank, named "main", top-level/exported, most
@@ -270,7 +378,7 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                                 <li>Test coverage</li>
                                 <li>Custom insights defined in a .insights file</li>
                                 <li>Recently visited subfiles</li>
-                            </ul>
+                            </ul> */}
                         </Card>
                         <Card className="card mt-3">
                             <CardHeader>Commits</CardHeader>
@@ -303,7 +411,6 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                                 totalCountSummaryComponent={TotalCountSummary}
                             />
                         </Card>
-
                         <Card className="card mt-3">
                             <CardHeader>Contributors</CardHeader>
                             <Contributors
