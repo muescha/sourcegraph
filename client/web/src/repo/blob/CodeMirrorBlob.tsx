@@ -2,7 +2,7 @@
  * An experimental implementation of the Blob view using CodeMirror
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { openSearchPanel } from '@codemirror/search'
 import { Compartment, EditorState, Extension } from '@codemirror/state'
@@ -223,13 +223,18 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
             // We use setState here instead of dispatching a transaction because
             // the new document has nothing to do with the previous one and so
             // any existing state should be discarded.
+            const uri = toURIWithPath(blobInfo)
+            const range = selections.get(uri)
             editor.setState(
                 EditorState.create({
                     doc: blobInfo.content,
                     extensions,
-                    // selection: editor.state.selection,
                 })
             )
+            if (range) {
+                editor.contentDOM.focus()
+                selectRange(editor, range)
+            }
         }
         // editor is not provided because this should only be triggered after the
         // editor was created (i.e. not on first render)
@@ -287,19 +292,19 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [position, hasPin])
 
-    useLayoutEffect(() => {
-        if (editor) {
-            const uri = toURIWithPath(blobInfo)
-            const range = selections.get(uri)
-            console.log({ selections, uri, range })
-            if (range) {
-                requestAnimationFrame(() => {
-                    editor.contentDOM.focus()
-                    selectRange(editor, range)
-                })
-            }
-        }
-    }, [blobInfo, editor])
+    // useLayoutEffect(() => {
+    //     if (editor) {
+    //         const uri = toURIWithPath(blobInfo)
+    //         const range = selections.get(uri)
+    //         console.log({ selections, uri, range })
+    //         if (range) {
+    //             requestAnimationFrame(() => {
+    //                 editor.contentDOM.focus()
+    //                 selectRange(editor, range)
+    //             })
+    //         }
+    //     }
+    // }, [blobInfo, editor])
 
     const openSearch = useCallback(() => {
         if (editorRef.current) {

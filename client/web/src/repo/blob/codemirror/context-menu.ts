@@ -1,4 +1,4 @@
-import { EditorSelection, Extension, Line } from '@codemirror/state'
+import { EditorSelection, Extension, Facet, Line, SelectionRange, StateEffect, StateField } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { Remote } from 'comlink'
 import * as H from 'history'
@@ -160,18 +160,31 @@ const scrollLineIntoView = (view: EditorView, line: Line): boolean => {
     return false
 }
 
-export const selectRange = (view: EditorView, range: Range): void => {
+export const rangeToSelection = (view: EditorView, range: Range): SelectionRange => {
     const startLine = view.state.doc.line(range.start.line + 1)
     const endLine = view.state.doc.line(range.end.line + 1)
     const start = startLine.from + range.start.character
     const end = endLine.from + range.end.character
-    console.log({ dispatch: range })
-    view.dispatch({ selection: EditorSelection.range(start, end) })
-    const lineAbove = view.state.doc.line(Math.min(view.state.doc.lines, startLine.number + 2))
+    return EditorSelection.range(start, end)
+}
+export const uriFacet = Facet.define<string, string>({
+    combine: props => props[0],
+})
+export const selectionsFacet = Facet.define<Map<string, Range>, Map<string, Range>>({
+    combine: props => props[0],
+})
+
+export const selectRange = (view: EditorView, range: Range): void => {
+    const selection = rangeToSelection(view, range)
+    view.dispatch({ selection })
+    const uri = view.state.facet(uriFacet)
+    const selections = view.state.facet(selectionsFacet)
+    selections.set(uri, range)
+    const lineAbove = view.state.doc.line(Math.min(view.state.doc.lines, range.start.line + 3))
     if (scrollLineIntoView(view, lineAbove)) {
         return
     }
-    const lineBelow = view.state.doc.line(Math.max(1, startLine.number - 2))
+    const lineBelow = view.state.doc.line(Math.max(1, range.end.line - 1))
     scrollLineIntoView(view, lineBelow)
 }
 
@@ -187,6 +200,8 @@ export function contextMenu(
     document.addEventListener('keyup', globalEventHandler)
 
     return [
+        uriFacet.of(toURIWithPath(blobInfo)),
+        selectionsFacet.of(selections),
         keymap.of([
             {
                 key: 'Space',
