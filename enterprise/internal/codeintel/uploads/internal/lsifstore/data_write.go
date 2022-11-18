@@ -9,7 +9,6 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/internal/database/batch"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
-	"github.com/sourcegraph/sourcegraph/internal/goroutine"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/lib/codeintel/precise"
 )
@@ -296,7 +295,7 @@ ON CONFLICT DO NOTHING
 // withBatchInserter runs batch.WithInserter in a number of goroutines proportional to
 // the maximum number of CPUs that can be executing simultaneously.
 func withBatchInserter(ctx context.Context, db dbutil.DB, tableName string, columns []string, f func(inserter *batch.Inserter) error) (err error) {
-	return goroutine.RunWorkers(goroutine.SimplePoolWorker(func() error {
-		return batch.WithInserter(ctx, db, tableName, batch.MaxNumPostgresParameters, columns, f)
-	}))
+	// return goroutine.RunWorkers(goroutine.SimplePoolWorker(func() error {
+	return batch.WithInserter(ctx, db, tableName, batch.MaxNumPostgresParameters, columns, f)
+	// }))
 }

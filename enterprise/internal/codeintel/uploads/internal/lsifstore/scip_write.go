@@ -1,7 +1,6 @@
 package lsifstore
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"sync/atomic"
@@ -61,19 +60,19 @@ func (s *store) WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID
 
 	inserter := func(inserter *batch.Inserter) error {
 		for _, symbol := range symbols {
-			definitionRanges, err := compactRange(symbol.DefinitionRanges)
+			definitionRanges, err := compactRanges(symbol.DefinitionRanges)
 			if err != nil {
 				return err
 			}
-			referenceRanges, err := compactRange(symbol.ReferenceRanges)
+			referenceRanges, err := compactRanges(symbol.ReferenceRanges)
 			if err != nil {
 				return err
 			}
-			implementationRanges, err := compactRange(symbol.ImplementationRanges)
+			implementationRanges, err := compactRanges(symbol.ImplementationRanges)
 			if err != nil {
 				return err
 			}
-			typeDefinitionRanges, err := compactRange(symbol.TypeDefinitionRanges)
+			typeDefinitionRanges, err := compactRanges(symbol.TypeDefinitionRanges)
 			if err != nil {
 				return err
 			}
@@ -82,7 +81,6 @@ func (s *store) WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID
 				ctx,
 				uploadID,
 				symbol.SymbolName,
-				documentLookupID,
 				definitionRanges,
 				referenceRanges,
 				implementationRanges,
@@ -104,7 +102,6 @@ func (s *store) WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID
 		[]string{
 			"upload_id",
 			"symbol_name",
-			"document_lookup_id",
 			"definition_ranges",
 			"reference_ranges",
 			"implementation_ranges",
@@ -116,7 +113,7 @@ func (s *store) WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID
 	}
 	// trace.Log(log.Int("numRecords", int(count)))
 
-	err = tx.Exec(ctx, sqlf.Sprintf(writeSCIPSymbolsInsertQuery, 1))
+	err = tx.Exec(ctx, sqlf.Sprintf(writeSCIPSymbolsInsertQuery, documentLookupID, 1))
 	if err != nil {
 		return 0, err
 	}
@@ -128,7 +125,6 @@ const writeSCIPSymbolsTemporaryTableQuery = `
 CREATE TEMPORARY TABLE t_codeintel_scip_symbols (
 	upload_id integer NOT NULL,
 	symbol_name text NOT NULL,
-	document_lookup_id bigint NOT NULL,
 	definition_ranges bytea,
 	reference_ranges bytea,
 	implementation_ranges bytea,
@@ -150,7 +146,7 @@ INSERT INTO codeintel_scip_symbols (
 SELECT
 	source.upload_id,
 	source.symbol_name,
-	source.document_lookup_id,
+	%s,
 	%s,
 	source.definition_ranges,
 	source.reference_ranges,
@@ -160,23 +156,18 @@ FROM t_codeintel_scip_symbols source
 ON CONFLICT DO NOTHING
 `
 
-func compactRange(r []int32) ([]byte, error) {
-	switch len(r) {
-	case 3:
-		return compactIntegerValues(r[0], r[1], r[0], r[2])
-	case 4:
-		return compactIntegerValues(r[0], r[1], r[2], r[3])
-
-	default:
-		return nil, errors.Newf("unexpected range length %d", len(r))
+func compactRanges(vs []int32) ([]byte, error) {
+	if len(vs) == 0 {
+		return nil, nil
 	}
-}
-
-func compactIntegerValues(vs ...int32) ([]byte, error) {
-	buf := bytes.Buffer{}
-	if err := binary.Write(&buf, binary.LittleEndian, vs); err != nil {
-		return nil, err
+	if len(vs)%4 != 0 {
+		return nil, errors.Newf("unexpected range length - have %d but expected a multiple of 4", len(vs))
 	}
 
-	return buf.Bytes(), nil
+	var buf []byte
+	for _, v := range vs {
+		buf = binary.AppendVarint(buf, int64(v))
+	}
+
+	return buf, nil
 }
