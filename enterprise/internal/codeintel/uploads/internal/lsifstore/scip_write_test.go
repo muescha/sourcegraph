@@ -21,7 +21,7 @@ func TestInsertSCIPDocument(t *testing.T) {
 	// TODO - setup
 
 	// TODO - better values
-	n, err := store.InsertSCIPDocument(ctx, 24, "foobar.go", [256]byte{}, nil)
+	n, err := store.InsertSCIPDocument(ctx, 24, "foobar.go", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to write SCIP document: %s", err)
 	}

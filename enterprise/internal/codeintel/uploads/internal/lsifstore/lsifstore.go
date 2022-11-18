@@ -33,7 +33,7 @@ type LsifStore interface {
 	ScanLocations(ctx context.Context, id int, f func(scheme, identifier, monikerType string, locations []precise.LocationData) error) (err error)
 
 	// SCIP
-	InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash [256]byte, rawSCIPPayload []byte) (int, error)
+	InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash []byte, rawSCIPPayload []byte) (int, error)
 	WriteSCIPSymbols(ctx context.Context, uploadID, documentLookupID int, symbols []conversion.ProcessedSymbolData) (uint32, error)
 }
 

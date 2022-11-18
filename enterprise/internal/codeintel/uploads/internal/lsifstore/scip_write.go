@@ -14,7 +14,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/lib/codeintel/lsif/conversion"
 )
 
-func (s *store) InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash [256]byte, rawSCIPPayload []byte) (int, error) {
+func (s *store) InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash []byte, rawSCIPPayload []byte) (int, error) {
 	id, _, err := basestore.ScanFirstInt(s.db.Query(ctx, sqlf.Sprintf(
 		insertSCIPDocumentQuery,
 		hash,
