@@ -1,5 +1,5 @@
 import { EditorSelection, Extension, Line } from '@codemirror/state'
-import { EditorView, keymap, ViewPlugin } from '@codemirror/view'
+import { EditorView, keymap } from '@codemirror/view'
 import { Remote } from 'comlink'
 import * as H from 'history'
 
@@ -12,10 +12,10 @@ import { parseRepoURI, toPrettyBlobURL, toURIWithPath } from '@sourcegraph/share
 import { BlobInfo } from '../Blob'
 
 import { HighlightIndex, syntaxHighlight } from './highlight'
+import { shouldScrollIntoView } from './linenumbers'
 import { isInteractiveOccurrence } from './tokens-as-links'
 
 import styles from './context-menu.module.scss'
-import { shouldScrollIntoView } from './linenumbers'
 
 function occurrenceAtPosition(
     view: EditorView,
@@ -60,10 +60,9 @@ function closestOccurrence(line: number, table: HighlightIndex, position: Positi
 
 function occurrenceAtEvent(
     view: EditorView,
-    event: MouseEvent,
-    blobInfo: BlobInfo
+    event: MouseEvent
 ): { occurrence: Occurrence; position: Position; coords: Coordinates } | undefined {
-    const atEvent = positionAtEvent(view, event, blobInfo)
+    const atEvent = positionAtEvent(view, event)
     if (!atEvent) {
         return
     }
@@ -78,6 +77,7 @@ function goToDefinitionAtOccurrence(
     view: EditorView,
     blobInfo: BlobInfo,
     history: H.History,
+    selections: Map<string, Range>,
     codeintel: Remote<FlatExtensionHostAPI>,
     position: Position,
     occurrence: Occurrence,
@@ -91,7 +91,7 @@ function goToDefinitionAtOccurrence(
         return fromCache
     }
     const uri = toURIWithPath(blobInfo)
-    const promise = goToDefinition(view, history, codeintel, { position, textDocument: { uri } }, coords)
+    const promise = goToDefinition(view, history, selections, codeintel, { position, textDocument: { uri } }, coords)
     definitionCache.set(occurrence, promise)
     return promise
 }
@@ -101,21 +101,18 @@ function goToDefinitionAtEvent(
     event: MouseEvent,
     blobInfo: BlobInfo,
     history: H.History,
+    selections: Map<string, Range>,
     codeintel: Remote<FlatExtensionHostAPI>
 ): Promise<() => void> {
-    const atEvent = occurrenceAtEvent(view, event, blobInfo)
+    const atEvent = occurrenceAtEvent(view, event)
     if (!atEvent) {
         return Promise.resolve(() => {})
     }
     const { occurrence, position, coords } = atEvent
-    return goToDefinitionAtOccurrence(view, blobInfo, history, codeintel, position, occurrence, coords)
+    return goToDefinitionAtOccurrence(view, blobInfo, history, selections, codeintel, position, occurrence, coords)
 }
 
-function positionAtEvent(
-    view: EditorView,
-    event: MouseEvent,
-    blobInfo: BlobInfo
-): { position: Position; coords: Coordinates } | undefined {
+function positionAtEvent(view: EditorView, event: MouseEvent): { position: Position; coords: Coordinates } | undefined {
     const coords: Coordinates = {
         x: event.clientX,
         y: event.clientY,
@@ -153,46 +150,47 @@ const globalEventHandler = (event: KeyboardEvent): void => {
     }
 }
 
-function closesByDistance(line: number, table: OccIndex)
+const scrollLineIntoView = (view: EditorView, line: Line): boolean => {
+    if (shouldScrollIntoView(view, { line: line.number })) {
+        view.dispatch({
+            effects: EditorView.scrollIntoView(line.from, { y: 'nearest' }),
+        })
+        return true
+    }
+    return false
+}
+
+export const selectRange = (view: EditorView, range: Range): void => {
+    const startLine = view.state.doc.line(range.start.line + 1)
+    const endLine = view.state.doc.line(range.end.line + 1)
+    const start = startLine.from + range.start.character
+    const end = endLine.from + range.end.character
+    console.log({ dispatch: range })
+    view.dispatch({ selection: EditorSelection.range(start, end) })
+    const lineAbove = view.state.doc.line(Math.min(view.state.doc.lines, startLine.number + 2))
+    if (scrollLineIntoView(view, lineAbove)) {
+        return
+    }
+    const lineBelow = view.state.doc.line(Math.max(1, startLine.number - 2))
+    scrollLineIntoView(view, lineBelow)
+}
 
 export function contextMenu(
     codeintel: Remote<FlatExtensionHostAPI> | undefined,
     blobInfo: BlobInfo,
-    history: H.History
+    history: H.History,
+    selections: Map<string, Range>
 ): Extension {
     document.removeEventListener('keydown', globalEventHandler)
     document.addEventListener('keydown', globalEventHandler)
     document.removeEventListener('keyup', globalEventHandler)
     document.addEventListener('keyup', globalEventHandler)
 
-    const scrollLineIntoView = (view: EditorView, line: Line): boolean => {
-        if (shouldScrollIntoView(view, { line: line.number })) {
-            view.dispatch({
-                effects: EditorView.scrollIntoView(line.from, { y: 'nearest' }),
-            })
-            return true
-        }
-        return false
-    }
-    const selectOccurrence = (view: EditorView, occurrence: Occurrence): void => {
-        const startLine = view.state.doc.line(occurrence.range.start.line + 1)
-        const endLine = view.state.doc.line(occurrence.range.end.line + 1)
-        const start = startLine.from + occurrence.range.start.character
-        const end = endLine.from + occurrence.range.end.character
-        view.dispatch({ selection: EditorSelection.range(start, end) })
-        const lineAbove = view.state.doc.line(Math.min(view.state.doc.lines, startLine.number + 2))
-        if (scrollLineIntoView(view, lineAbove)) {
-            return
-        }
-        const lineBelow = view.state.doc.line(Math.max(0, startLine.number - 2))
-        scrollLineIntoView(view, lineBelow)
-    }
-
     return [
         keymap.of([
             {
                 key: 'Space',
-                run(view) {
+                run() {
                     return true
                 },
             },
@@ -213,7 +211,16 @@ export function contextMenu(
                     const rect = view.coordsAtPos(cmPos)
                     const coords: Coordinates = rect ? { x: rect.left, y: rect.top } : { x: 0, y: 0 }
                     const spinner = new Spinner(coords)
-                    goToDefinitionAtOccurrence(view, blobInfo, history, codeintel, position, occurrence, coords)
+                    goToDefinitionAtOccurrence(
+                        view,
+                        blobInfo,
+                        history,
+                        selections,
+                        codeintel,
+                        position,
+                        occurrence,
+                        coords
+                    )
                         .then(
                             action => action(),
                             () => {}
@@ -249,12 +256,10 @@ export function contextMenu(
                         if (!isInteractiveOccurrence(occurrence)) {
                             continue
                         }
-                        console.log({ position, occurrence: occurrence.range })
                         if (occurrence.range.start.character >= position.character) {
-                            console.log('boom')
                             continue
                         }
-                        selectOccurrence(view, occurrence)
+                        selectRange(view, occurrence.range)
                         return true
                     }
                     return true
@@ -281,7 +286,7 @@ export function contextMenu(
                         if (!isInteractiveOccurrence(occurrence)) {
                             continue
                         }
-                        selectOccurrence(view, occurrence)
+                        selectRange(view, occurrence.range)
                         return true
                     }
                     return true
@@ -295,7 +300,7 @@ export function contextMenu(
                     for (let line = position.line + 1; line < table.lineIndex.length; line++) {
                         const occurrence = closestOccurrence(line, table, position)
                         if (occurrence) {
-                            selectOccurrence(view, occurrence)
+                            selectRange(view, occurrence.range)
                             return true
                         }
                     }
@@ -307,10 +312,10 @@ export function contextMenu(
                 run(view) {
                     const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
                     const table = view.state.facet(syntaxHighlight)
-                    for (let line = position.line - 1; line > 0; line--) {
+                    for (let line = position.line - 1; line >= 0; line--) {
                         const occurrence = closestOccurrence(line, table, position)
                         if (occurrence) {
-                            selectOccurrence(view, occurrence)
+                            selectRange(view, occurrence.range)
                             return true
                         }
                     }
@@ -326,7 +331,7 @@ export function contextMenu(
                     return
                 }
                 // toggleClickableClass(view, event.metaKey)
-                goToDefinitionAtEvent(view, event, blobInfo, history, codeintel).then(
+                goToDefinitionAtEvent(view, event, blobInfo, history, selections, codeintel).then(
                     () => {},
                     () => {}
                 )
@@ -335,6 +340,10 @@ export function contextMenu(
                 if (!codeintel) {
                     return
                 }
+                const atEvent = occurrenceAtEvent(view, event)
+                if (atEvent && isInteractiveOccurrence(atEvent.occurrence)) {
+                    selectRange(view, atEvent.occurrence.range)
+                }
                 if (!event.metaKey) {
                     return
                 }
@@ -342,7 +351,7 @@ export function contextMenu(
                     x: event.clientX,
                     y: event.clientY,
                 })
-                goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
+                goToDefinitionAtEvent(view, event, blobInfo, history, selections, codeintel)
                     .then(
                         action => action(),
                         () => {}
@@ -356,11 +365,11 @@ export function contextMenu(
                 if (!codeintel) {
                     return
                 }
-                const atEvent = positionAtEvent(view, event, blobInfo)
+                const atEvent = positionAtEvent(view, event)
                 if (!atEvent) {
                     return
                 }
-                const definitionAction = goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
+                const definitionAction = goToDefinitionAtEvent(view, event, blobInfo, history, selections, codeintel)
                 const { coords } = atEvent
                 const menu = document.createElement('div')
                 const definition = document.createElement('div')
@@ -437,7 +446,7 @@ function showTooltip(view: EditorView, element: HTMLElement, coords: Coordinates
 async function goToDefinition(
     view: EditorView,
     history: H.History,
-
+    selections: Map<string, Range>,
     codeintel: Remote<FlatExtensionHostAPI>,
     params: TextDocumentPositionParameters,
     coords: Coordinates
@@ -476,29 +485,48 @@ async function goToDefinition(
             }
         }
     }
-    //  TODO: Handle when already at the definition
     if (result.result.length === 1) {
         const location = result.result[0]
         const uri = parseRepoURI(location.uri)
-        if (uri.filePath && location.range) {
+        const { range } = location
+        if (uri.filePath && range) {
             const href = toPrettyBlobURL({
                 repoName: uri.repoName,
                 revision: uri.revision,
                 filePath: uri.filePath,
-                position: { line: location.range.start.line + 1, character: location.range.start.character + 1 },
+                position: { line: range.start.line + 1, character: range.start.character + 1 },
             })
-            return () => history.push(href)
+            return () => {
+                const selectionRange = Range.fromNumbers(
+                    range.start.line,
+                    range.start.character,
+                    range.end.line,
+                    range.end.character
+                )
+                selections.set(location.uri, selectionRange)
+                if (location.uri === params.textDocument.uri) {
+                    selectRange(view, selectionRange)
+                }
+                history.push(href)
+            }
         }
     }
-    const uri = parseRepoURI(params.textDocument.uri)
-    const href = toPrettyBlobURL({
-        repoName: uri.repoName,
-        revision: uri.revision,
-        filePath: uri.filePath || 'FIXME_THIS_IS_A_BUG',
-        position: { line: params.position.line + 1, character: params.position.character + 1 },
-        viewState: 'def',
-    })
-    return () => history.push(href)
+    // const uri = parseRepoURI(params.textDocument.uri)
+    // const href = toPrettyBlobURL({
+    //     repoName: uri.repoName,
+    //     revision: uri.revision,
+    //     filePath: uri.filePath || 'FIXME_THIS_IS_A_BUG',
+    //     position: { line: params.position.line + 1, character: params.position.character + 1 },
+    //     viewState: 'def',
+    // })
+    // TODO: something more useful than opening ref panel
+    return () => {
+        const element = document.createElement('div')
+        element.textContent = 'FIXME: Multiple definitions found'
+        element.style.color = 'white'
+        element.style.backgroundColor = 'deepskyblue'
+        showTooltip(view, element, coords, 2000)
+    }
 }
 
 class Spinner {

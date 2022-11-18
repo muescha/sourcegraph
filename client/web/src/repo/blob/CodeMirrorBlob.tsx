@@ -2,7 +2,7 @@
  * An experimental implementation of the Blob view using CodeMirror
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { openSearchPanel } from '@codemirror/search'
 import { Compartment, EditorState, Extension } from '@codemirror/state'
@@ -15,23 +15,24 @@ import {
     formatSearchParameters,
     toPositionOrRangeQueryParameter,
 } from '@sourcegraph/common'
+import { Range } from '@sourcegraph/shared/src/codeintel/scip'
 import { editorHeight, useCodeMirror } from '@sourcegraph/shared/src/components/CodeMirrorEditor'
 import { Shortcut } from '@sourcegraph/shared/src/react-shortcuts'
-import { parseQueryAndHash } from '@sourcegraph/shared/src/util/url'
+import { parseQueryAndHash, toURIWithPath } from '@sourcegraph/shared/src/util/url'
 import { useLocalStorage, useObservable } from '@sourcegraph/wildcard'
-
-import { useExperimentalFeatures } from '../../stores'
 
 import { BlobInfo, BlobProps, updateBrowserHistoryIfChanged } from './Blob'
 import { blobPropsFacet } from './codemirror'
 import { showGitBlameDecorations } from './codemirror/blame-decorations'
-import { contextMenu } from './codemirror/context-menu'
+import { contextMenu, selectRange } from './codemirror/context-menu'
 import { syntaxHighlight } from './codemirror/highlight'
 import { pin, updatePin } from './codemirror/hovercard'
 import { selectableLineNumbers, SelectedLineRange, selectLines } from './codemirror/linenumbers'
 import { search } from './codemirror/search'
 import { sourcegraphExtensions } from './codemirror/sourcegraph-extensions'
 import { isValidLineRange } from './codemirror/utils'
+
+const selections: Map<string, Range> = new Map()
 
 const staticExtensions: Extension = [
     EditorState.readOnly.of(true),
@@ -115,6 +116,7 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
     // This is used to avoid reinitializing the editor when new locations in the
     // same file are opened inside the reference panel.
     const blobInfo = useDistinctBlob(props.blobInfo)
+
     const position = useMemo(() => parseQueryAndHash(location.search, location.hash), [location.search, location.hash])
     const hasPin = useMemo(() => urlIsPinned(location.search), [location.search])
 
@@ -126,8 +128,6 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
     )
 
     const blameDecorations = useMemo(() => (blameHunks ? [showGitBlameDecorations.of(blameHunks)] : []), [blameHunks])
-
-    const preloadGoToDefinition = useExperimentalFeatures(features => features.preloadGoToDefinition ?? false)
 
     // Keep history and location in a ref so that we can use the latest value in
     // the onSelection callback without having to recreate it and having to
@@ -179,7 +179,7 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
                 initialSelection: position.line !== undefined ? position : null,
                 navigateToLineOnAnyClick: navigateToLineOnAnyClick ?? false,
             }),
-            tokenKeyboardNavigation ? contextMenu(codeintel, blobInfo, history) : [],
+            tokenKeyboardNavigation ? contextMenu(codeintel, blobInfo, history, selections) : [],
             syntaxHighlight.of(blobInfo),
             pin.init(() => (hasPin ? position : null)),
             !tokenKeyboardNavigation && extensionsController !== null && !navigateToLineOnAnyClick
@@ -227,6 +227,7 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
                 EditorState.create({
                     doc: blobInfo.content,
                     extensions,
+                    // selection: editor.state.selection,
                 })
             )
         }
@@ -285,6 +286,20 @@ export const Blob: React.FunctionComponent<BlobProps> = props => {
         // editor was created (i.e. not on first render)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [position, hasPin])
+
+    useLayoutEffect(() => {
+        if (editor) {
+            const uri = toURIWithPath(blobInfo)
+            const range = selections.get(uri)
+            console.log({ selections, uri, range })
+            if (range) {
+                requestAnimationFrame(() => {
+                    editor.contentDOM.focus()
+                    selectRange(editor, range)
+                })
+            }
+        }
+    }, [blobInfo, editor])
 
     const openSearch = useCallback(() => {
         if (editorRef.current) {

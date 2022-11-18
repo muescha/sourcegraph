@@ -300,7 +300,6 @@ export const tokensAsLinks = ({
         EditorView.domEventHandlers({
             click(event: MouseEvent) {
                 const target = event.target as HTMLElement
-                console.log({ target, cmd: event.metaKey })
 
                 // Check to see if the clicked target is a token link.
                 // If it is, push the link to the history stack.
