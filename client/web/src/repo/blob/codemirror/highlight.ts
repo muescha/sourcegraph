@@ -13,7 +13,7 @@ import { positionToOffset } from './utils'
  * server with a lineIndex map (implemented as array), for fast lookup by line
  * number, with minimal additional impact on memory (e.g. garbage collection).
  */
-interface HighlightIndex {
+export interface HighlightIndex {
     occurrences: Occurrence[]
     lineIndex: (number | undefined)[]
 }

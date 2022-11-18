@@ -11,7 +11,7 @@ import { parseRepoURI, toPrettyBlobURL, toURIWithPath } from '@sourcegraph/share
 
 import { BlobInfo } from '../Blob'
 
-import { syntaxHighlight } from './highlight'
+import { HighlightIndex, syntaxHighlight } from './highlight'
 import { isInteractiveOccurrence } from './tokens-as-links'
 
 import styles from './context-menu.module.scss'
@@ -36,6 +36,27 @@ function occurrenceAtPosition(
     return
 }
 
+function closestOccurrence(line: number, table: HighlightIndex, position: Position): Occurrence | undefined {
+    const candidates: [Occurrence, number][] = []
+    let index = table.lineIndex[line] ?? -1
+    for (
+        ;
+        index >= 0 && index < table.occurrences.length && table.occurrences[index].range.start.line === line;
+        index++
+    ) {
+        const occurrence = table.occurrences[index]
+        if (!isInteractiveOccurrence(occurrence)) {
+            continue
+        }
+        candidates.push([occurrence, occurrence.range.characterDistance(position)])
+    }
+    candidates.sort(([, a], [, b]) => a - b)
+    if (candidates.length > 0) {
+        return candidates[0][0]
+    }
+    return undefined
+}
+
 function occurrenceAtEvent(
     view: EditorView,
     event: MouseEvent,
@@ -52,6 +73,27 @@ function occurrenceAtEvent(
     }
     return { ...occurrence, coords }
 }
+function goToDefinitionAtOccurrence(
+    view: EditorView,
+    blobInfo: BlobInfo,
+    history: H.History,
+    codeintel: Remote<FlatExtensionHostAPI>,
+    position: Position,
+    occurrence: Occurrence,
+    coords: Coordinates
+): Promise<() => void> {
+    if (!isInteractiveOccurrence(occurrence)) {
+        return Promise.resolve(() => {})
+    }
+    const fromCache = definitionCache.get(occurrence)
+    if (fromCache) {
+        return fromCache
+    }
+    const uri = toURIWithPath(blobInfo)
+    const promise = goToDefinition(view, history, codeintel, { position, textDocument: { uri } }, coords)
+    definitionCache.set(occurrence, promise)
+    return promise
+}
 
 function goToDefinitionAtEvent(
     view: EditorView,
@@ -65,18 +107,9 @@ function goToDefinitionAtEvent(
         return Promise.resolve(() => {})
     }
     const { occurrence, position, coords } = atEvent
-    if (!isInteractiveOccurrence(occurrence)) {
-        return Promise.resolve(() => {})
-    }
-    const fromCache = definitionCache.get(occurrence)
-    if (fromCache) {
-        return fromCache
-    }
-    const uri = toURIWithPath(blobInfo)
-    const promise = goToDefinition(view, history, codeintel, { position, textDocument: { uri } }, coords)
-    definitionCache.set(occurrence, promise)
-    return promise
+    return goToDefinitionAtOccurrence(view, blobInfo, history, codeintel, position, occurrence, coords)
 }
+
 function positionAtEvent(
     view: EditorView,
     event: MouseEvent,
@@ -119,6 +152,8 @@ const globalEventHandler = (event: KeyboardEvent): void => {
     }
 }
 
+function closesByDistance(line: number, table: OccIndex)
+
 export function contextMenu(
     codeintel: Remote<FlatExtensionHostAPI> | undefined,
     blobInfo: BlobInfo,
@@ -129,39 +164,127 @@ export function contextMenu(
     document.removeEventListener('keyup', globalEventHandler)
     document.addEventListener('keyup', globalEventHandler)
 
+    const selectOccurrence = (view: EditorView, occurrence: Occurrence): void => {
+        const startLine = view.state.doc.line(occurrence.range.start.line + 1).from
+        const endLine = view.state.doc.line(occurrence.range.end.line + 1).from
+        const start = startLine + occurrence.range.start.character
+        const end = endLine + occurrence.range.end.character
+        view.dispatch({ selection: EditorSelection.range(start, end) })
+    }
+
     return [
         keymap.of([
             {
-                key: 'ArrowDown',
+                key: 'Space',
                 run(view) {
-                    console.log(view.state.selection)
+                    return true
+                },
+            },
+            {
+                key: 'Enter',
+                run(view) {
+                    if (!codeintel) {
+                        return false
+                    }
                     const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
-                    console.log({ position })
-                    const line = position.line + 1
+                    const atEvent = occurrenceAtPosition(view, position)
+                    if (!atEvent) {
+                        return false
+                    }
+                    const { occurrence } = atEvent
+                    const cmLine = view.state.doc.line(occurrence.range.start.line + 1)
+                    const cmPos = cmLine.from + occurrence.range.start.character
+                    const rect = view.coordsAtPos(cmPos)
+                    const coords: Coordinates = rect ? { x: rect.left, y: rect.top } : { x: 0, y: 0 }
+                    const spinner = new Spinner(coords)
+                    goToDefinitionAtOccurrence(view, blobInfo, history, codeintel, position, occurrence, coords)
+                        .then(
+                            action => action(),
+                            () => {}
+                        )
+                        .finally(() => spinner.stop())
+                    return true
+                },
+            },
+            {
+                key: 'ArrowLeft',
+                run(view) {
+                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
                     const table = view.state.facet(syntaxHighlight)
-                    for (
-                        let index = table.lineIndex[line];
-                        index !== undefined &&
-                        index < table.occurrences.length &&
-                        table.occurrences[index].range.start.line >= line;
-                        index++
-                    ) {
+                    const line = position.line
+                    let index = table.lineIndex[line + 1] ?? -1
+                    index-- // Start with the last occurrence of this line
+                    for (; index >= 0 && table.occurrences[index].range.start.line === line; index--) {
                         const occurrence = table.occurrences[index]
                         if (!isInteractiveOccurrence(occurrence)) {
                             continue
                         }
-                        console.log({ occurrence })
-                        const startLine = view.state.doc.line(occurrence.range.start.line + 1).from
-                        const endLine = view.state.doc.line(occurrence.range.end.line + 1).from
-                        const start = startLine + occurrence.range.start.character
-                        const end = endLine + occurrence.range.end.character
-                        console.log({ start, end, text: view.state.doc.sliceString(start, end) })
-                        view.dispatch({ selection: EditorSelection.range(start, end) })
-                        // setTimeout(() => {
-                        // }, 100)
+                        console.log({ position, occurrence: occurrence.range })
+                        if (occurrence.range.start.character >= position.character) {
+                            console.log('boom')
+                            continue
+                        }
+                        selectOccurrence(view, occurrence)
                         return true
                     }
-                    return
+                    return true
+                },
+            },
+            {
+                key: 'ArrowRight',
+                run(view) {
+                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                    const table = view.state.facet(syntaxHighlight)
+                    const line = position.line
+                    let index = table.lineIndex[line] ?? -1
+                    for (
+                        ;
+                        index >= 0 &&
+                        index < table.occurrences.length &&
+                        table.occurrences[index].range.start.line === line;
+                        index++
+                    ) {
+                        const occurrence = table.occurrences[index]
+                        if (occurrence.range.start.character <= position.character) {
+                            continue
+                        }
+                        if (!isInteractiveOccurrence(occurrence)) {
+                            continue
+                        }
+                        selectOccurrence(view, occurrence)
+                        return true
+                    }
+                    return true
+                },
+            },
+            {
+                key: 'ArrowDown',
+                run(view) {
+                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                    const table = view.state.facet(syntaxHighlight)
+                    for (let line = position.line + 1; line < table.lineIndex.length; line++) {
+                        const occurrence = closestOccurrence(line, table, position)
+                        if (occurrence) {
+                            selectOccurrence(view, occurrence)
+                            return true
+                        }
+                    }
+                    return true
+                },
+            },
+            {
+                key: 'ArrowUp',
+                run(view) {
+                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                    const table = view.state.facet(syntaxHighlight)
+                    for (let line = position.line - 1; line > 0; line--) {
+                        const occurrence = closestOccurrence(line, table, position)
+                        if (occurrence) {
+                            selectOccurrence(view, occurrence)
+                            return true
+                        }
+                    }
+                    return true
                 },
             },
         ]),

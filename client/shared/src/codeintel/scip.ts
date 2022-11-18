@@ -44,6 +44,7 @@ export class Position implements sourcegraph.Position {
         return this.character - other.character
     }
 }
+
 export class Range {
     constructor(public readonly start: Position, public readonly end: Position) {}
     public static fromNumbers(startLine: number, startCharacter: number, endLine: number, endCharacter: number): Range {
@@ -51,6 +52,12 @@ export class Range {
     }
     public static fromRange(range: sourcegraph.Range): Range {
         return new Range(Position.fromPosition(range.start), Position.fromPosition(range.end))
+    }
+    public characterDistance(position: sourcegraph.Position): number {
+        return Math.min(
+            Math.abs(position.character - this.start.character),
+            Math.abs(position.character - this.end.character)
+        )
     }
     public contains(position: sourcegraph.Position): boolean {
         return this.start.isSmallerOrEqual(position) && this.end.isGreater(position)
