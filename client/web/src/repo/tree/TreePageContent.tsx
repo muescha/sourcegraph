@@ -6,7 +6,7 @@ import classNames from 'classnames'
 import { formatISO, subYears } from 'date-fns'
 import * as H from 'history'
 import { from, Observable, zip } from 'rxjs'
-import { map } from 'rxjs/operators'
+import { map, switchMap, tap } from 'rxjs/operators'
 
 import { ContributableMenu } from '@sourcegraph/client-api'
 import { memoizeObservable, numberWithCommas, pluralize } from '@sourcegraph/common'
@@ -25,6 +25,10 @@ import { getFileDecorations } from '../../backend/features'
 import { queryGraphQL, requestGraphQL } from '../../backend/graphql'
 import { FilteredConnection } from '../../components/FilteredConnection'
 import {
+    CommitAtTimeResult,
+    CommitAtTimeVariables,
+    DiffSinceResult,
+    DiffSinceVariables,
     GitCommitFields,
     RepositoryContributorNodeFields,
     RepositoryContributorsResult,
@@ -61,11 +65,12 @@ import { hasNextPage } from '../../components/FilteredConnection/utils'
 import { BATCH_COUNT } from '../RepositoriesPopover'
 import { useConnection } from '../../components/FilteredConnection/hooks/useConnection'
 import { buildSearchURLQuery } from '@sourcegraph/shared/src/util/url'
-import { escapeRegExp } from 'lodash'
+import { escapeRegExp, some } from 'lodash'
 import { Timestamp } from 'rxjs/internal/operators/timestamp'
 import { PersonLink } from '../../person/PersonLink'
 import { searchQueryForRepoRevision, quoteIfNeeded } from '../../search'
 import { UserAvatar } from '../../user/UserAvatar'
+import { number, string } from 'prop-types'
 
 export type TreeCommitsRepositoryCommit = NonNullable<
     Extract<TreeCommitsResult['node'], { __typename: 'Repository' }>['commit']
@@ -73,7 +78,8 @@ export type TreeCommitsRepositoryCommit = NonNullable<
 
 // TODO(beyang): dark theme
 // TODO(beyang): add back settings, code graph, etc. buttons to the right of the header
-
+// TODO(beyang): replace references to "HEAD" with current rev
+//               also need to go "1 month before" date of head revision
 export const fetchTreeCommits = memoizeObservable(
     (args: {
         repo: Scalars['ID']
@@ -121,6 +127,138 @@ export const fetchTreeCommits = memoizeObservable(
         ),
     args => `${args.repo}:${args.revspec}:${String(args.first)}:${String(args.filePath)}:${String(args.after)}`
 )
+
+export const fetchMostActiveFiles = (args: {
+    repo: Scalars['String']
+    revspec: Scalars['String']
+    beforespec: Scalars['String']
+    filePath: Scalars['String']
+}): Observable<{
+    dirActivity: { name: string; added: number; deleted: number }[]
+    top10Files: { path: string; added: number; deleted: number }[]
+}> => // TODO(beyang): need to fetch time of head rev first
+    requestGraphQL<CommitAtTimeResult, CommitAtTimeVariables>(
+        gql`
+            query CommitAtTime($repo: String!, $revspec: String!, $beforespec: String!) {
+                repository(name: $repo) {
+                    commit(rev: $revspec) {
+                        ancestors(first: 1, before: $beforespec) {
+                            nodes {
+                                oid
+                            }
+                        }
+                    }
+                }
+            }
+        `,
+        args
+    ).pipe(
+        map(dataOrThrowErrors),
+        map(data => {
+            const nodes = data.repository?.commit?.ancestors.nodes
+            if (!nodes || nodes.length === 0) {
+                throw new Error(`no commit found before ${args.beforespec} from revspec ${args.revspec}`)
+            }
+            return nodes[0].oid
+        }),
+        switchMap(baseOID =>
+            requestGraphQL<DiffSinceResult, DiffSinceVariables>(
+                gql`
+                    query DiffSince($repo: String!, $basespec: String!, $headspec: String!, $filePaths: [String!]!) {
+                        repository(name: $repo) {
+                            comparison(base: $basespec, head: $headspec) {
+                                fileDiffs(paths: $filePaths) {
+                                    nodes {
+                                        newPath
+                                        stat {
+                                            added
+                                            deleted
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                `,
+                {
+                    repo: args.repo,
+                    basespec: baseOID,
+                    headspec: args.revspec,
+                    filePaths: [args.filePath || '.'],
+                }
+            )
+        ),
+        map(dataOrThrowErrors),
+        map(data => {
+            const nodes = data.repository?.comparison.fileDiffs.nodes || []
+            const transformed: { path: string; added: number; deleted: number }[] = []
+            for (const node of nodes) {
+                if (!node.newPath) {
+                    continue
+                }
+                transformed.push({
+                    path: node.newPath,
+                    ...node.stat,
+                })
+            }
+            return transformed
+        }),
+        map((diffs: { path: string; added: number; deleted: number }[]) => {
+            const dirActivity = new Map<string, { name: string; added: number; deleted: number }>()
+            for (const fileDiffStat of diffs) {
+                // strip filePath prefix from fileDiffStat.path
+
+                const strippedPath = fileDiffStat.path.slice(args.filePath.length)
+                let subdirName = strippedPath
+                if (subdirName.includes('/')) {
+                    subdirName = subdirName.slice(0, subdirName.indexOf('/'))
+                }
+                if (!dirActivity.has(subdirName)) {
+                    dirActivity.set(subdirName, { name: subdirName, added: 0, deleted: 0 })
+                }
+                dirActivity.get(subdirName)!.added += fileDiffStat.added
+                dirActivity.get(subdirName)!.deleted += fileDiffStat.deleted
+            }
+
+            const dirActivityArray = Array.from(dirActivity.values()).sort(
+                (a, b) => b.added + b.deleted - (a.added + a.deleted)
+            )
+
+            // iterate through diffs, keeping track of top 10 by sum of added and deleted
+            const top10: { path: string; added: number; deleted: number }[] = []
+            for (const fileDiffStat of diffs) {
+                if (top10.length < 20) {
+                    top10.push(fileDiffStat)
+                    continue
+                }
+
+                if (some(['_test', 'mock', 'yarn.lock'].map(substr => fileDiffStat.path.includes(substr)))) {
+                    continue
+                }
+
+                // find the minimum
+                let minIndex = 0
+                for (let i = 1; i < top10.length; i++) {
+                    if (top10[i].added + top10[i].deleted < top10[minIndex].added + top10[minIndex].deleted) {
+                        minIndex = i
+                    }
+                }
+                if (fileDiffStat.added + fileDiffStat.deleted > top10[minIndex].added + top10[minIndex].deleted) {
+                    top10[minIndex] = fileDiffStat
+                }
+            }
+            top10.sort((a, b) => b.added + b.deleted - (a.added + a.deleted))
+
+            console.log('### top10', top10)
+            console.log('### dirActivity', dirActivity)
+            console.log('### dirActivityArray', dirActivityArray)
+
+            return {
+                dirActivity: dirActivityArray,
+                top10Files: top10,
+            }
+        })
+    )
 
 interface TreeStatFields {
     name: string
@@ -249,6 +387,19 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
         useMemo(() => fetchTreeStats({ repo: repo.name, revspec: revision, filePath }), [repo.name, revision, filePath])
     )
 
+    const fileActivity = useObservable(
+        useMemo(
+            () =>
+                fetchMostActiveFiles({
+                    repo: repo.name,
+                    revspec: revision,
+                    beforespec: '1 month',
+                    filePath,
+                }),
+            [repo.name, revision, filePath]
+        )
+    )
+
     const queryCommits = useCallback(
         (args: { first?: number }): Observable<TreeCommitsRepositoryCommit['ancestors']> => {
             const after: string | undefined = showOlderCommits ? undefined : formatISO(subYears(Date.now(), 1))
@@ -349,10 +500,18 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                 <div className="row">
                     <div className="col-6">
                         <FilePanel tree={tree} />
+                        {fileActivity?.top10Files && (
+                            <Card className="card">
+                                <CardHeader>Most visited files</CardHeader>
+                                {fileActivity.top10Files.map(fileInfo => (
+                                    <div key={fileInfo.path}>{fileInfo.path}</div>
+                                ))}
+                            </Card>
+                        )}
                     </div>
                     <div className="col-6">
                         <Card className="card">
-                            <CardHeader>Muh languages</CardHeader>
+                            <CardHeader>Languages</CardHeader>
                             <div className="m-auto">
                                 {treeStats && (
                                     <PieChart<TreeStatFields>
