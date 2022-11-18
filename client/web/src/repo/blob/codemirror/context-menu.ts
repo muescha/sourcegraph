@@ -1,4 +1,4 @@
-import { EditorSelection, Extension } from '@codemirror/state'
+import { EditorSelection, Extension, Line } from '@codemirror/state'
 import { EditorView, keymap, ViewPlugin } from '@codemirror/view'
 import { Remote } from 'comlink'
 import * as H from 'history'
@@ -15,6 +15,7 @@ import { HighlightIndex, syntaxHighlight } from './highlight'
 import { isInteractiveOccurrence } from './tokens-as-links'
 
 import styles from './context-menu.module.scss'
+import { shouldScrollIntoView } from './linenumbers'
 
 function occurrenceAtPosition(
     view: EditorView,
@@ -164,12 +165,27 @@ export function contextMenu(
     document.removeEventListener('keyup', globalEventHandler)
     document.addEventListener('keyup', globalEventHandler)
 
+    const scrollLineIntoView = (view: EditorView, line: Line): boolean => {
+        if (shouldScrollIntoView(view, { line: line.number })) {
+            view.dispatch({
+                effects: EditorView.scrollIntoView(line.from, { y: 'nearest' }),
+            })
+            return true
+        }
+        return false
+    }
     const selectOccurrence = (view: EditorView, occurrence: Occurrence): void => {
-        const startLine = view.state.doc.line(occurrence.range.start.line + 1).from
-        const endLine = view.state.doc.line(occurrence.range.end.line + 1).from
-        const start = startLine + occurrence.range.start.character
-        const end = endLine + occurrence.range.end.character
+        const startLine = view.state.doc.line(occurrence.range.start.line + 1)
+        const endLine = view.state.doc.line(occurrence.range.end.line + 1)
+        const start = startLine.from + occurrence.range.start.character
+        const end = endLine.from + occurrence.range.end.character
         view.dispatch({ selection: EditorSelection.range(start, end) })
+        const lineAbove = view.state.doc.line(Math.min(view.state.doc.lines, startLine.number + 2))
+        if (scrollLineIntoView(view, lineAbove)) {
+            return
+        }
+        const lineBelow = view.state.doc.line(Math.max(0, startLine.number - 2))
+        scrollLineIntoView(view, lineBelow)
     }
 
     return [
@@ -203,6 +219,20 @@ export function contextMenu(
                             () => {}
                         )
                         .finally(() => spinner.stop())
+                    return true
+                },
+            },
+            {
+                key: 'Mod-ArrowRight',
+                run() {
+                    history.goForward()
+                    return true
+                },
+            },
+            {
+                key: 'Mod-ArrowLeft',
+                run() {
+                    history.goBack()
                     return true
                 },
             },
