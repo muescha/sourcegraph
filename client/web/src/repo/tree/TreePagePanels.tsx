@@ -1,4 +1,4 @@
-import React, { FunctionComponent, useCallback, useMemo, useState } from 'react'
+import React, { FunctionComponent, useCallback, useMemo, useRef, useState } from 'react'
 import { mdiFileDocumentOutline, mdiFolderOutline } from '@mdi/js'
 import { Link, Icon, Card, CardHeader } from '@sourcegraph/wildcard'
 
@@ -38,47 +38,68 @@ import { tree } from 'gulp'
 import { entry } from '../../nav/StatusMessagesNavItem.module.scss'
 import { LinkOrSpan } from '@sourcegraph/shared/src/components/LinkOrSpan'
 
+interface ReadmePreviewCardProps {
+    readmeHTML: string
+    location: H.Location
+}
+
+export const ReadmePreviewCard: React.FunctionComponent<ReadmePreviewCardProps> = ({ readmeHTML, location }) => {
+    const fileRef = useRef<HTMLDivElement>(null)
+    const containerRef = useRef<HTMLDivElement>(null)
+    const isCutoff =
+        fileRef.current &&
+        containerRef.current &&
+        fileRef.current.clientHeight > 0 &&
+        containerRef.current.clientHeight < fileRef.current.clientHeight
+    console.log('# fileRef.current.clientHeight', fileRef.current?.clientHeight)
+    console.log('# containerRef.current.clientHeight', containerRef.current?.clientHeight)
+    console.log('# isCutoff', isCutoff)
+    return (
+        <div className={classNames(styles.readmeContainer, 'pt-0 pl-3')} ref={containerRef}>
+            <RenderedFile ref={fileRef} dangerousInnerHTML={readmeHTML} location={location} />
+            {isCutoff && <div className={classNames('pb-0 pt-3 pl-3', styles.readmeMore)}>More...</div>}
+        </div>
+    )
+}
 
 interface FilePanelProps {
     tree: TreeFields
 }
 
 // TODO(beyang): add back in renderedFileDecorations
-export const FilePanel: React.FunctionComponent<React.PropsWithChildren<FilePanelProps>> = ({
-    tree,
-}) => (
-        <Card className="card">
-            <CardHeader>Files</CardHeader>
-            {tree.entries.map(entry => (
-                <div key={entry.name} className="list-group list-group-flush px-2 py-1 border-bottom">
-                    <LinkOrSpan
-                        to={entry.url}
+export const FilePanel: React.FunctionComponent<React.PropsWithChildren<FilePanelProps>> = ({ tree }) => (
+    <Card className="card">
+        <CardHeader>Files</CardHeader>
+        {tree.entries.map(entry => (
+            <div key={entry.name} className="list-group list-group-flush px-2 py-1 border-bottom">
+                <LinkOrSpan
+                    to={entry.url}
+                    className={classNames(
+                        'test-page-file-decorable',
+                        treeEntryStyles.treeEntry,
+                        entry.isDirectory && 'font-weight-bold',
+                        `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`
+                    )}
+                    title={entry.path}
+                    data-testid="tree-entry"
+                >
+                    <div
                         className={classNames(
-                                'test-page-file-decorable',
-                                treeEntryStyles.treeEntry,
-                                entry.isDirectory && 'font-weight-bold',
-                                `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`
-                            )}
-                            title={entry.path}
-                            data-testid="tree-entry"
+                            'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
+                        )}
                     >
-                        <div
-                            className={classNames(
-                                'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
-                            )}
-                        >
-                            <span>
-                                <Icon
-                                    className="mr-1"
-                                    svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
-                                    aria-hidden={true}
-                                />
-                                {entry.name}
-                                {entry.isDirectory && '/'}
-                            </span>
-                        </div>                    
-                    </LinkOrSpan>
-                </div>
-            ))}
-        </Card>
+                        <span>
+                            <Icon
+                                className="mr-1"
+                                svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
+                                aria-hidden={true}
+                            />
+                            {entry.name}
+                            {entry.isDirectory && '/'}
+                        </span>
+                    </div>
+                </LinkOrSpan>
+            </div>
+        ))}
+    </Card>
 )

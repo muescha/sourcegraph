@@ -1,29 +1,37 @@
-import { mdiFileDocumentOutline, mdiFolderOutline } from '@mdi/js'
-import { Link, Icon, Card, CardHeader, Tooltip, PieChart } from '@sourcegraph/wildcard'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 
 import classNames from 'classnames'
+
 import { formatISO, subYears } from 'date-fns'
+import { Link, Card, CardHeader, Tooltip, PieChart } from '@sourcegraph/wildcard'
+
 import * as H from 'history'
 import { from, Observable, zip } from 'rxjs'
-import { map, switchMap, tap } from 'rxjs/operators'
+import { map, switchMap } from 'rxjs/operators'
 
-import { ContributableMenu } from '@sourcegraph/client-api'
 import { memoizeObservable, numberWithCommas, pluralize } from '@sourcegraph/common'
 import { dataOrThrowErrors, gql } from '@sourcegraph/http-client'
-import { ActionItem } from '@sourcegraph/shared/src/actions/ActionItem'
-import { ActionsContainer } from '@sourcegraph/shared/src/actions/ActionsContainer'
 import { FileDecorationsByPath } from '@sourcegraph/shared/src/api/extension/extensionHostApi'
 import { ExtensionsControllerProps } from '@sourcegraph/shared/src/extensions/controller'
 import { SearchPatternType, TreeFields } from '@sourcegraph/shared/src/graphql-operations'
 import { PlatformContextProps } from '@sourcegraph/shared/src/platform/context'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
-import { Button, Heading, Text, useObservable } from '@sourcegraph/wildcard'
+import { Button, Text, useObservable } from '@sourcegraph/wildcard'
 
 import { getFileDecorations } from '../../backend/features'
 import { queryGraphQL, requestGraphQL } from '../../backend/graphql'
 import { FilteredConnection } from '../../components/FilteredConnection'
+import { useConnection } from '../../components/FilteredConnection/hooks/useConnection'
+import {
+    ConnectionContainer,
+    ConnectionError,
+    ConnectionList,
+    ConnectionLoading,
+    SummaryContainer,
+    ConnectionSummary,
+    ShowMoreButton,
+} from '../../components/FilteredConnection/ui'
 import {
     CommitAtTimeResult,
     CommitAtTimeVariables,
@@ -39,38 +47,25 @@ import {
     TreeStatsResult,
     TreeStatsVariables,
 } from '../../graphql-operations'
+import { fetchBlob } from '../blob/backend'
 import { GitCommitNodeProps, GitCommitNode } from '../commits/GitCommitNode'
 import { gitCommitFragment } from '../commits/RepositoryCommitsPage'
 
-import { TreeEntriesSection } from './TreeEntriesSection'
-
-import treeEntryStyles from './TreeEntriesSection.module.scss'
 import styles from './TreePage.module.scss'
 import contributorsStyles from './TreePageContentContributors.module.scss'
-import { fetchBlob } from '../blob/backend'
 import { RenderedFile } from '../blob/RenderedFile'
-import { FilePanel } from './TreePagePanels'
-import { error } from 'shelljs'
-import { loading } from '../../auth/welcome/InviteCollaborators/InviteCollaborators.module.scss'
-import {
-    ConnectionContainer,
-    ConnectionError,
-    ConnectionList,
-    ConnectionLoading,
-    SummaryContainer,
-    ConnectionSummary,
-    ShowMoreButton,
-} from '../../components/FilteredConnection/ui'
-import { hasNextPage } from '../../components/FilteredConnection/utils'
+
+import { FilePanel, ReadmePreviewCard } from './TreePagePanels'
+
 import { BATCH_COUNT } from '../RepositoriesPopover'
-import { useConnection } from '../../components/FilteredConnection/hooks/useConnection'
+
 import { buildSearchURLQuery } from '@sourcegraph/shared/src/util/url'
+
 import { escapeRegExp, some } from 'lodash'
-import { Timestamp } from 'rxjs/internal/operators/timestamp'
+
 import { PersonLink } from '../../person/PersonLink'
 import { searchQueryForRepoRevision, quoteIfNeeded } from '../../search'
 import { UserAvatar } from '../../user/UserAvatar'
-import { number, string } from 'prop-types'
 
 export type TreeCommitsRepositoryCommit = NonNullable<
     Extract<TreeCommitsResult['node'], { __typename: 'Repository' }>['commit']
@@ -482,27 +477,29 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                 {' '}
                 {/* TODO: factor this out into MarkdownPreview component */}
                 {richHTML && richHTML !== 'loading' && (
-                    <div
-                        style={{
-                            maxHeight: '30rem',
-                            overflow: 'hidden',
-                            position: 'relative',
-                        }}
-                    >
-                        <RenderedFile className="pt-0 pl-3" dangerousInnerHTML={richHTML} location={props.location} />
-                    </div>
+                    <ReadmePreviewCard readmeHTML={richHTML} location={props.location} />
+                    //
+                    // <div
+                    //     style={{
+                    //         maxHeight: '30rem',
+                    //         overflow: 'hidden',
+                    //         position: 'relative',
+                    //     }}
+                    // >
+                    //     <RenderedFile className="pt-0 pl-3" dangerousInnerHTML={richHTML} location={props.location} />
+                    // </div>
                 )}
             </div>
-            <div className="px-3 pb-3">
+            {/* <div className="px-3 pb-3">
                 <Link to="TODO">More...</Link>
-            </div>
+            </div> */}
             <section className={classNames('test-tree-entries mb-3 container', styles.section)}>
                 <div className="row">
                     <div className="col-6">
                         <FilePanel tree={tree} />
                         {fileActivity?.top10Files && (
                             <Card className="card">
-                                <CardHeader>Most visited files</CardHeader>
+                                <CardHeader>Most active</CardHeader>
                                 {fileActivity.top10Files.map(fileInfo => (
                                     <div key={fileInfo.path}>{fileInfo.path}</div>
                                 ))}

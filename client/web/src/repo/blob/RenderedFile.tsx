@@ -23,17 +23,17 @@ interface Props {
 /**
  * Displays a file whose contents are rendered to HTML, such as a Markdown file.
  */
-export const RenderedFile: React.FunctionComponent<React.PropsWithChildren<Props>> = ({
-    className,
-    dangerousInnerHTML,
-    location,
-}) => {
+
+export const RenderedFile: React.FunctionComponent<React.PropsWithChildren<Props>> = React.forwardRef<
+    HTMLDivElement,
+    Props
+>(({ className, dangerousInnerHTML, location }, ref) => {
     useScrollToLocationHash(location)
     return (
-        <div className={classNames(styles.renderedFile, className)}>
+        <div ref={ref} className={classNames(styles.renderedFile, className)}>
             <div className={styles.container}>
                 <Markdown dangerousInnerHTML={dangerousInnerHTML} />
             </div>
         </div>
     )
-}
+})
