@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"io"
 	"sort"
-	"strings"
 
 	"github.com/sourcegraph/scip/bindings/go/scip"
 	"google.golang.org/protobuf/proto"
@@ -97,83 +96,62 @@ func canonicalizeDocument(document *scip.Document) {
 func hashDocument(document *scip.Document) []byte {
 	hash := sha256.New()
 
-	writeStrings := func(vs ...string) {
+	writeString := func(v string) {
+		_, _ = hash.Write([]byte(v))
+		_, _ = hash.Write([]byte{0})
+	}
+	writeStrings := func(vs []string) {
 		for _, v := range vs {
-			_, _ = hash.Write([]byte(v))
-			_, _ = hash.Write([]byte{0})
+			writeString(v)
 		}
 	}
-
-	writeInts := func(vs ...int32) {
+	writeInts := func(vs []int32) {
 		_ = binary.Write(hash, binary.LittleEndian, vs)
 		_, _ = hash.Write([]byte{0})
 	}
-
 	writeBools := func(vs ...bool) {
-		b := make([]byte, 0, len(vs)+1)
-		for _, v := range vs {
+		var m int32
+		for i, v := range vs {
 			if v {
-				b = append(b, 1)
-			} else {
-				b = append(b, 0)
+				m |= (1 << i)
 			}
 		}
 
-		_ = binary.Write(hash, binary.LittleEndian, append(b, 0))
+		writeInts([]int32{m})
 	}
 
 	for _, occurrence := range document.Occurrences {
 		r := scip.NewRange(occurrence.Range)
 
-		writeStrings(
-			"occ",
-			occurrence.Symbol,
-			strings.Join(occurrence.OverrideDocumentation, "\n---\n"),
-		)
-		writeInts(
-			r.Start.Line,
-			r.Start.Character,
-			r.End.Line,
-			r.End.Character,
-			occurrence.SymbolRoles,
-			int32(occurrence.SyntaxKind),
-		)
+		writeString("occ")
+		writeString(occurrence.Symbol)
+		writeStrings(occurrence.OverrideDocumentation)
+		writeInts([]int32{r.Start.Line, r.Start.Character, r.End.Line, r.End.Character, occurrence.SymbolRoles, int32(occurrence.SyntaxKind)})
 
 		for _, diagnostic := range occurrence.Diagnostics {
-			vs := []int32{
-				int32(diagnostic.Severity),
-			}
+			vs := make([]int32, 0, len(diagnostic.Tags)+1)
+			vs = append(vs, int32(diagnostic.Severity))
 			for _, tag := range diagnostic.Tags {
 				vs = append(vs, int32(tag))
 			}
 
-			writeStrings(
-				"dia",
-				diagnostic.Code,
-				diagnostic.Message,
-				diagnostic.Source,
-			)
-			writeInts(vs...)
+			writeString("dia")
+			writeString(diagnostic.Code)
+			writeString(diagnostic.Message)
+			writeString(diagnostic.Source)
+			writeInts(vs)
 		}
 	}
 
 	for _, symbol := range document.Symbols {
-		writeStrings(
-			"sym",
-			symbol.Symbol,
-			strings.Join(symbol.Documentation, "\n---\n"),
-		)
+		writeString("sym")
+		writeString(symbol.Symbol)
+		writeStrings(symbol.Documentation)
 
 		for _, relationship := range symbol.Relationships {
-			writeStrings(
-				"rel",
-				relationship.Symbol,
-			)
-			writeBools(
-				relationship.IsReference,
-				relationship.IsImplementation,
-				relationship.IsTypeDefinition,
-			)
+			writeString("rel")
+			writeString(relationship.Symbol)
+			writeBools(relationship.IsReference, relationship.IsImplementation, relationship.IsTypeDefinition)
 		}
 	}
 
