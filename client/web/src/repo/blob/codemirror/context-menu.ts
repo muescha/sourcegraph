@@ -1,5 +1,5 @@
 import { Extension } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { EditorView, ViewPlugin } from '@codemirror/view'
 import { Remote } from 'comlink'
 import * as H from 'history'
 
@@ -14,6 +14,9 @@ import { BlobInfo } from '../Blob'
 import { syntaxHighlight } from './highlight'
 import { isInteractiveOccurrence } from './tokens-as-links'
 
+import styles from './context-menu.module.scss'
+import { COMPLETIONSTATEMENT_TYPES } from '@babel/types'
+
 function occurrenceAtEvent(
     view: EditorView,
     event: MouseEvent,
@@ -21,11 +24,9 @@ function occurrenceAtEvent(
 ): { occurrence: Occurrence; position: Position; coords: Coordinates } | undefined {
     const atEvent = positionAtEvent(view, event, blobInfo)
     if (!atEvent) {
-        console.log({ atEvent })
         return
     }
     const { position, coords } = atEvent
-    console.log({ position })
     const table = view.state.facet(syntaxHighlight)
     for (
         let index = table.lineIndex[position.line];
@@ -50,12 +51,10 @@ function goToDefinitionAtEvent(
     codeintel: Remote<FlatExtensionHostAPI>
 ): Promise<() => void> {
     const atEvent = occurrenceAtEvent(view, event, blobInfo)
-    console.log({ atEvent })
     if (!atEvent) {
         return Promise.resolve(() => {})
     }
     const { occurrence, position, coords } = atEvent
-    console.log({ occurrence })
     if (!isInteractiveOccurrence(occurrence)) {
         return Promise.resolve(() => {})
     }
@@ -85,88 +84,116 @@ function positionAtEvent(
     const cmLine = view.state.doc.lineAt(position)
     const line = cmLine.number - 1
     const character = position - cmLine.from
-    console.log({ line, character })
     return { position: new Position(line, character), coords }
 }
 
 const definitionCache = new Map<Occurrence, Promise<() => void>>()
+
+// HACK: we store the editor view in a global variable so that we can access it
+// from global keydown/keyup event handlers even when the editor is not focused.
+// The `keydown` handler in EditorView.domEventHandler doesn't capture events
+// when the editor is out of focus.
+let globalViewHack: EditorView | undefined
+const toggleClickableClass = (event: KeyboardEvent): void => {
+    if (!globalViewHack) {
+        return
+    }
+    if (event.metaKey) {
+        globalViewHack.contentDOM.classList.add(styles.clickable)
+    } else {
+        globalViewHack.contentDOM.classList.remove(styles.clickable)
+    }
+}
 
 export function contextMenu(
     codeintel: Remote<FlatExtensionHostAPI> | undefined,
     blobInfo: BlobInfo,
     history: H.History
 ): Extension {
-    return EditorView.domEventHandlers({
-        mouseover(event, view) {
-            // if (!codeintel) {
-            //     return
-            // }
-            // goToDefinitionAtEvent(view, event, blobInfo, history, codeintel).then(
-            //     () => {},
-            //     () => {}
-            // )
-        },
-        click(event, view) {
-            // if (!codeintel) {
-            //     return
-            // }
-            // if (!event.metaKey) {
-            //     return
-            // }
-            // const spinner = new Spinner({
-            //     x: event.clientX,
-            //     y: event.clientY,
-            // })
-            // goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
-            //     .then(
-            //         action => action(),
-            //         () => {}
-            //     )
-            //     .finally(() => spinner.stop())
-        },
-        contextmenu(event, view) {
-            if (event.shiftKey) {
-                return
-            }
-            if (!codeintel) {
-                return
-            }
-            const atEvent = positionAtEvent(view, event, blobInfo)
-            if (!atEvent) {
-                return
-            }
-            const definitionAction = goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
-            const { coords } = atEvent
-            const menu = document.createElement('div')
-            const definition = document.createElement('div')
-            definition.innerHTML = 'Go to definition'
-            definition.classList.add('codeintel-contextmenu-item')
-            definition.classList.add('codeintel-contextmenu-item-action')
+    document.removeEventListener('keydown', toggleClickableClass)
+    document.addEventListener('keydown', toggleClickableClass)
+    document.removeEventListener('keyup', toggleClickableClass)
+    document.addEventListener('keyup', toggleClickableClass)
 
-            definition.addEventListener('click', () => {
-                const spinner = new Spinner(coords)
-                definitionAction
+    return [
+        EditorView.domEventHandlers({
+            keydown(event, view) {
+                toggleClickableClass(view, event.metaKey)
+            },
+            mouseover(event, view) {
+                globalViewHack = view
+
+                if (!codeintel) {
+                    return
+                }
+                toggleClickableClass(view, event.metaKey)
+                goToDefinitionAtEvent(view, event, blobInfo, history, codeintel).then(
+                    () => {},
+                    () => {}
+                )
+            },
+            click(event, view) {
+                if (!codeintel) {
+                    return
+                }
+                if (!event.metaKey) {
+                    return
+                }
+                const spinner = new Spinner({
+                    x: event.clientX,
+                    y: event.clientY,
+                })
+                goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
                     .then(
                         action => action(),
                         () => {}
                     )
                     .finally(() => spinner.stop())
-            })
-            menu.append(definition)
+            },
+            contextmenu(event, view) {
+                if (event.shiftKey) {
+                    return
+                }
+                if (!codeintel) {
+                    return
+                }
+                const atEvent = positionAtEvent(view, event, blobInfo)
+                if (!atEvent) {
+                    return
+                }
+                const definitionAction = goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
+                const { coords } = atEvent
+                const menu = document.createElement('div')
+                const definition = document.createElement('div')
+                definition.innerHTML = 'Go to definition'
+                definition.classList.add('codeintel-contextmenu-item')
+                definition.classList.add('codeintel-contextmenu-item-action')
 
-            const references = document.createElement('div')
-            references.innerHTML = 'Find references'
-            references.classList.add('codeintel-contextmenu-item')
-            references.classList.add('codeintel-contextmenu-item-action')
-            menu.append(references)
+                definition.addEventListener('click', () => {
+                    const spinner = new Spinner(coords)
+                    definitionAction
+                        .then(
+                            action => action(),
+                            () => {}
+                        )
+                        .finally(() => spinner.stop())
+                })
+                menu.append(definition)
 
-            const browserMenu = document.createElement('div')
-            browserMenu.innerHTML = 'Browser context menu shift+right-click'
-            browserMenu.classList.add('codeintel-contextmenu-item')
-            menu.append(browserMenu)
-            showTooltip(view, menu, coords)
-        },
-    })
+                const references = document.createElement('div')
+                references.innerHTML = 'Find references'
+                references.classList.add('codeintel-contextmenu-item')
+                references.classList.add('codeintel-contextmenu-item-action')
+                menu.append(references)
+
+                const browserMenu = document.createElement('div')
+                browserMenu.innerHTML = 'Browser context menu shift+right-click'
+                browserMenu.classList.add('codeintel-contextmenu-item')
+                menu.append(browserMenu)
+                showTooltip(view, menu, coords)
+            },
+        }),
+    ]
 }
 
 interface Coordinates {
