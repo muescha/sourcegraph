@@ -8,6 +8,7 @@ import { openSearchPanel } from '@codemirror/search'
 import { Compartment, EditorState, Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { isEqual } from 'lodash'
+import { from } from 'rxjs'
 
 import {
     addLineRangeQueryParameter,
@@ -28,11 +29,8 @@ import { syntaxHighlight } from './codemirror/highlight'
 import { pin, updatePin } from './codemirror/hovercard'
 import { selectableLineNumbers, SelectedLineRange, selectLines } from './codemirror/linenumbers'
 import { search } from './codemirror/search'
-import { sourcegraphExtensions } from './codemirror/sourcegraph-extensions'
 import { tokensAsLinks } from './codemirror/tokens-as-links'
 import { isValidLineRange } from './codemirror/utils'
-import { from, of } from 'rxjs'
-import { createExtensionHostAPI } from '@sourcegraph/shared/src/api/extension/extensionHostApi'
 
 const staticExtensions: Extension = [
     EditorState.readOnly.of(true),
