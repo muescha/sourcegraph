@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"hash"
 	"io"
 	"sort"
+	"strings"
 
 	"github.com/sourcegraph/scip/bindings/go/scip"
 	"google.golang.org/protobuf/proto"
@@ -94,39 +96,22 @@ func canonicalizeDocument(document *scip.Document) {
 }
 
 func hashDocument(document *scip.Document) []byte {
-	hash := sha256.New()
-
-	writeString := func(v string) {
-		_, _ = hash.Write([]byte(v))
-		_, _ = hash.Write([]byte{0})
-	}
-	writeStrings := func(vs []string) {
-		for _, v := range vs {
-			writeString(v)
-		}
-	}
-	writeInts := func(vs []int32) {
-		_ = binary.Write(hash, binary.LittleEndian, vs)
-		_, _ = hash.Write([]byte{0})
-	}
-	writeBools := func(vs ...bool) {
-		var m int32
-		for i, v := range vs {
-			if v {
-				m |= (1 << i)
-			}
-		}
-
-		writeInts([]int32{m})
-	}
+	hash := &hasher{h: sha256.New()}
 
 	for _, occurrence := range document.Occurrences {
 		r := scip.NewRange(occurrence.Range)
 
-		writeString("occ")
-		writeString(occurrence.Symbol)
-		writeStrings(occurrence.OverrideDocumentation)
-		writeInts([]int32{r.Start.Line, r.Start.Character, r.End.Line, r.End.Character, occurrence.SymbolRoles, int32(occurrence.SyntaxKind)})
+		hash.Write(markerOccurrence)
+		hash.WriteString(occurrence.Symbol)
+		hash.WriteStringSlice(occurrence.OverrideDocumentation)
+		hash.WriteInts(
+			r.Start.Line,
+			r.Start.Character,
+			r.End.Line,
+			r.End.Character,
+			occurrence.SymbolRoles,
+			int32(occurrence.SyntaxKind),
+		)
 
 		for _, diagnostic := range occurrence.Diagnostics {
 			vs := make([]int32, 0, len(diagnostic.Tags)+1)
@@ -135,27 +120,57 @@ func hashDocument(document *scip.Document) []byte {
 				vs = append(vs, int32(tag))
 			}
 
-			writeString("dia")
-			writeString(diagnostic.Code)
-			writeString(diagnostic.Message)
-			writeString(diagnostic.Source)
-			writeInts(vs)
+			hash.Write(markerDiagnostic)
+			hash.WriteString(diagnostic.Code)
+			hash.WriteString(diagnostic.Message)
+			hash.WriteString(diagnostic.Source)
+			hash.WriteInts(vs...)
 		}
 	}
 
 	for _, symbol := range document.Symbols {
-		writeString("sym")
-		writeString(symbol.Symbol)
-		writeStrings(symbol.Documentation)
+		hash.Write(markerSymbol)
+		hash.WriteString(symbol.Symbol)
+		hash.WriteStringSlice(symbol.Documentation)
 
 		for _, relationship := range symbol.Relationships {
-			writeString("rel")
-			writeString(relationship.Symbol)
-			writeBools(relationship.IsReference, relationship.IsImplementation, relationship.IsTypeDefinition)
+			hash.Write(markerSymbolRelationship)
+			hash.WriteString(relationship.Symbol)
+			hash.WriteBools(relationship.IsReference, relationship.IsImplementation, relationship.IsTypeDefinition)
 		}
 	}
 
-	return hash.Sum(nil)
+	return hash.Sum()
+}
+
+var (
+	sep                      = []byte{0}
+	markerOccurrence         = []byte{1}
+	markerDiagnostic         = []byte{2}
+	markerSymbol             = []byte{3}
+	markerSymbolRelationship = []byte{4}
+)
+
+type hasher struct {
+	h hash.Hash
+}
+
+func (h *hasher) Write(v []byte)               { h.writeBytes(v) }
+func (h *hasher) WriteString(v string)         { h.writeBytes([]byte(v)) }
+func (h *hasher) WriteStringSlice(vs []string) { h.WriteString(strings.Join(vs, string(sep))) }
+func (h *hasher) WriteInt(v int32)             { h.writeAny(v) }
+func (h *hasher) WriteInts(vs ...int32)        { h.writeAny(vs) }
+func (h *hasher) WriteBools(vs ...bool)        { h.writeAny(vs) }
+func (h *hasher) Sum() []byte                  { return h.h.Sum(nil) }
+
+func (h *hasher) writeAny(v any) {
+	_ = binary.Write(h.h, binary.LittleEndian, v)
+	_, _ = h.h.Write(sep)
+}
+
+func (h *hasher) writeBytes(v []byte) {
+	_, _ = h.h.Write(v)
+	_, _ = h.h.Write(sep)
 }
 
 func extractSymbols(document *scip.Document) []ProcessedSymbolData {
