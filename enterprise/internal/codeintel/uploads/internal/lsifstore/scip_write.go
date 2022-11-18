@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"sync/atomic"
 
 	"github.com/keegancsmith/sqlf"
@@ -12,6 +11,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/database/basestore"
 	"github.com/sourcegraph/sourcegraph/internal/database/batch"
 	"github.com/sourcegraph/sourcegraph/lib/codeintel/lsif/conversion"
+	"github.com/sourcegraph/sourcegraph/lib/errors"
 )
 
 func (s *store) InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash []byte, rawSCIPPayload []byte) (int, error) {
@@ -155,7 +155,7 @@ SELECT
 	source.definition_ranges,
 	source.reference_ranges,
 	source.implementation_ranges,
-	source.type_definition_ranges,
+	source.type_definition_ranges
 FROM t_codeintel_scip_symbols source
 ON CONFLICT DO NOTHING
 `
@@ -168,7 +168,7 @@ func compactRange(r []int32) ([]byte, error) {
 		return compactIntegerValues(r[0], r[1], r[2], r[3])
 
 	default:
-		return nil, fmt.Errorf("unexpected range length")
+		return nil, errors.Newf("unexpected range length %d", len(r))
 	}
 }
 

@@ -20,8 +20,11 @@ func TestInsertSCIPDocument(t *testing.T) {
 
 	// TODO - setup
 
-	// TODO - better values
-	n, err := store.InsertSCIPDocument(ctx, 24, "foobar.go", nil, nil)
+	uploadID := 24
+	documentPath := "internal/util.go"
+	hash := []byte("deadbeef")
+	payload := []byte("lorem ipsum dolor sit amet")
+	n, err := store.InsertSCIPDocument(ctx, uploadID, documentPath, hash, payload)
 	if err != nil {
 		t.Fatalf("failed to write SCIP document: %s", err)
 	}
@@ -38,8 +41,12 @@ func TestWriteSCIPSymbols(t *testing.T) {
 
 	// TODO - setup
 
-	// TODO - better values
-	n, err := store.WriteSCIPSymbols(ctx, 24, 36, []conversion.ProcessedSymbolData{})
+	uploadID := 24
+	documentLookupID := 36
+	symbols := []conversion.ProcessedSymbolData{
+		// TODO
+	}
+	n, err := store.WriteSCIPSymbols(ctx, uploadID, documentLookupID, symbols)
 	if err != nil {
 		t.Fatalf("failed to write SCIP symbols: %s", err)
 	}
