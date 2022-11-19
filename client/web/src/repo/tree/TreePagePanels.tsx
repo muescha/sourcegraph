@@ -90,59 +90,71 @@ export const FilesCard: React.FunctionComponent<React.PropsWithChildren<FilePane
 }) => (
     <Card className="card">
         <CardHeader>Files</CardHeader>
-        {entries.map(entry => (
-            <div
-                key={`${entry.name}${entry.stats && '-with-stats'}`}
-                className="list-group list-group-flush px-2 py-1 border-bottom"
-            >
-                <LinkOrSpan
-                    to={entry.url}
-                    className={classNames(
-                        'test-page-file-decorable',
-                        treeEntryStyles.treeEntry,
-                        entry.isDirectory && 'font-weight-bold',
-                        `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`
-                    )}
-                    title={entry.path}
-                    data-testid="tree-entry"
-                >
-                    <div
-                        className={classNames(
-                            'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
-                        )}
-                    >
-                        <span>
-                            <Icon
-                                className="mr-1"
-                                svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
-                                aria-hidden={true}
-                            />
-                            {entry.name}
-                            {entry.isDirectory && '/'}
-                        </span>
+        <div className="container">
+            {entries.map(entry => (
+                <div key={entry.name} className="row">
+                    <div className="list-group list-group-flush px-2 py-1 border-bottom col-6">
+                        <LinkOrSpan
+                            to={entry.url}
+                            className={classNames(
+                                'test-page-file-decorable',
+                                treeEntryStyles.treeEntry,
+                                entry.isDirectory && 'font-weight-bold',
+                                `test-tree-entry-${entry.isDirectory ? 'directory' : 'file'}`
+                            )}
+                            title={entry.path}
+                            data-testid="tree-entry"
+                        >
+                            <div
+                                className={classNames(
+                                    'd-flex align-items-center justify-content-between test-file-decorable-name overflow-hidden'
+                                )}
+                            >
+                                <span>
+                                    <Icon
+                                        className="mr-1"
+                                        svgPath={entry.isDirectory ? mdiFolderOutline : mdiFileDocumentOutline}
+                                        aria-hidden={true}
+                                    />
+                                    {entry.name}
+                                    {entry.isDirectory && '/'}
+                                </span>
+                            </div>
+                        </LinkOrSpan>
                     </div>
-                </LinkOrSpan>
-                <span>{entry.stats && `+${entry.stats?.added}, -${entry.stats?.deleted}`}</span>
-                {entry.stats && <DiffMeter {...entry.stats} totalWidth={maxLinesChanged} />}
-            </div>
-        ))}
+                    <div className="list-group list-group-flush px-2 py-1 border-bottom col-6">
+                        {entry.stats && <DiffMeter {...entry.stats} totalWidth={maxLinesChanged} />}
+                    </div>
+                </div>
+            ))}
+        </div>
     </Card>
 )
+const formatNumber = (value: number): string => Intl.NumberFormat('en', { notation: 'compact' }).format(value)
+
 export const DiffMeter: React.FunctionComponent<{
     added: number
     deleted: number
     totalWidth: number
 }> = ({ added, deleted, totalWidth }) => (
-    <div className={styles.diffMeter}>
+    <div title={`${formatNumber(added)} lines added, -${formatNumber(deleted)} deleted`} className={styles.diffMeter}>
         <div
-            className={classNames(styles.diffMeterBar, styles.diffMeterDeleted)}
             // eslint-disable-next-line react/forbid-dom-props
-            style={{ width: `${(100 * deleted) / totalWidth}%` }}
+            style={{
+                height: '100%',
+                display: 'inline-block',
+                width: `${(100 * added) / totalWidth}%`,
+            }}
+            className={classNames(styles.diffMeterBar, styles.diffMeterAdded)}
         />
         <div
-            className={classNames(styles.diffMeterBar, styles.diffMeterAdded)}
             // eslint-disable-next-line react/forbid-dom-props
-            style={{ width: `${(100 * added) / totalWidth}%` }}
+            style={{
+                height: '100%',
+                display: 'inline-block',
+                width: `${(100 * deleted) / totalWidth}%`,
+            }}
+            className={classNames(styles.diffMeterBar, styles.diffMeterDeleted)}
         />
     </div>
 )

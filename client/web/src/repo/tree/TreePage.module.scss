@@ -91,15 +91,20 @@
 }
 
 .diff-meter {
-    height: 1rem;
-}
-.diff-meter-bar {
-    height: 100%;
     display: 'inline-block';
-}
-.diff-meter-added {
-    background-color: green;
-}
-.diff-meter-deleted {
-    background-color: red;
+    text-align: right;
+    padding: 0.125rem 0.25rem;
+
+    .diff-meter-bar {
+        height: 1rem;
+        display: 'inline-block';
+    }
+    .diff-meter-added {
+        background-color: var(--green);
+        border-radius: 0.25rem 0 0 0.25rem;
+    }
+    .diff-meter-deleted {
+        background-color: var(--red);
+        border-radius: 0 0.25rem 0.25rem 0;
+    }
 }

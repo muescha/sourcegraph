@@ -511,7 +511,6 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
               entries: FilePanelProps['entries']
           }
     >()
-    console.log('### fileInfo', fileInfo)
     useEffect(() => {
         const subscription = fetchMostActiveFiles2({
             repo: repo.name,
@@ -521,7 +520,7 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
         }).subscribe(diffs => {
             const dirActivity = new Map<string, { name: string; added: number; deleted: number }>()
             for (const fileDiffStat of diffs) {
-                const strippedPath = fileDiffStat.path.slice(filePath.length)
+                const strippedPath = filePath === '' ? fileDiffStat.path : fileDiffStat.path.slice(filePath.length + 1)
                 let subdirName = strippedPath
                 if (subdirName.includes('/')) {
                     subdirName = subdirName.slice(0, subdirName.indexOf('/'))
@@ -533,21 +532,21 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                 dirActivity.get(subdirName)!.deleted += fileDiffStat.deleted
             }
 
-            setFileInfo({
-                maxLinesChanged: Math.max(
-                    1,
-                    ...Array.from(dirActivity.values()).map(activity => activity.added + activity.deleted)
-                ),
-                entries: tree.entries.map(entry => ({
-                    ...entry,
-                    stats: dirActivity.has(entry.name)
-                        ? {
-                              added: dirActivity.get(entry.name)!.added,
-                              deleted: dirActivity.get(entry.name)!.deleted,
-                          }
-                        : undefined,
-                })),
-            })
+            const maxLinesChanged = Math.max(
+                1,
+                ...Array.from(dirActivity.values()).map(activity => activity.added + activity.deleted)
+            )
+            const entries = tree.entries.map(entry => ({
+                ...entry,
+                stats: dirActivity.has(entry.name)
+                    ? {
+                          added: dirActivity.get(entry.name)!.added,
+                          deleted: dirActivity.get(entry.name)!.deleted,
+                      }
+                    : undefined,
+            }))
+
+            setFileInfo({ maxLinesChanged, entries })
         })
         return () => subscription.unsubscribe()
     }, [repo.name, revision, filePath, tree.entries])
@@ -659,7 +658,10 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
             <section className={classNames('test-tree-entries mb-3 container', styles.section)}>
                 <div className="row">
                     <div className="col-6">
-                        <FilesCard entries={fileInfo?.entries || tree.entries} />
+                        <FilesCard
+                            maxLinesChanged={fileInfo?.maxLinesChanged || 1}
+                            entries={fileInfo?.entries || tree.entries}
+                        />
                         {fileActivity?.top10Files && (
                             <Card className="card">
                                 <CardHeader>Most active</CardHeader>
