@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import classNames from 'classnames'
 
@@ -6,8 +6,8 @@ import { formatISO, subYears } from 'date-fns'
 import { Link, Card, CardHeader, Tooltip, PieChart } from '@sourcegraph/wildcard'
 
 import * as H from 'history'
-import { from, Observable, zip } from 'rxjs'
-import { map, switchMap } from 'rxjs/operators'
+import { from, Observable, of, zip } from 'rxjs'
+import { map, switchMap, tap } from 'rxjs/operators'
 
 import { memoizeObservable, numberWithCommas, pluralize } from '@sourcegraph/common'
 import { dataOrThrowErrors, gql } from '@sourcegraph/http-client'
@@ -33,6 +33,9 @@ import {
     ShowMoreButton,
 } from '../../components/FilteredConnection/ui'
 import {
+    BlobFileFields,
+    CommitAtTime2Result,
+    CommitAtTime2Variables,
     CommitAtTimeResult,
     CommitAtTimeVariables,
     DiffSinceResult,
@@ -55,7 +58,7 @@ import styles from './TreePage.module.scss'
 import contributorsStyles from './TreePageContentContributors.module.scss'
 import { RenderedFile } from '../blob/RenderedFile'
 
-import { FilePanel, ReadmePreviewCard } from './TreePagePanels'
+import { FilePanelProps, FilesCard, ReadmePreviewCard } from './TreePagePanels'
 
 import { BATCH_COUNT } from '../RepositoriesPopover'
 
@@ -122,6 +125,110 @@ export const fetchTreeCommits = memoizeObservable(
         ),
     args => `${args.repo}:${args.revspec}:${String(args.first)}:${String(args.filePath)}:${String(args.after)}`
 )
+
+interface FileActivity {
+    path: string
+    added: number
+    deleted: number
+}
+
+export const fetchCommit = (args: {
+    repo: Scalars['String']
+    revspec: Scalars['String']
+    beforespec: Scalars['String'] | null
+}): Observable<GitCommitFields> =>
+    requestGraphQL<CommitAtTime2Result, CommitAtTime2Variables>(
+        gql`
+            query CommitAtTime2($repo: String!, $revspec: String!, $beforespec: String) {
+                repository(name: $repo) {
+                    commit(rev: $revspec) {
+                        ancestors(first: 1, before: $beforespec) {
+                            nodes {
+                                ...GitCommitFields
+                            }
+                        }
+                    }
+                }
+            }
+            ${gitCommitFragment}
+        `,
+        args
+    ).pipe(
+        map(dataOrThrowErrors),
+        map(data => {
+            const nodes = data.repository?.commit?.ancestors.nodes
+            if (!nodes || nodes.length === 0) {
+                throw new Error(`no commit found before ${args.beforespec} from revspec ${args.revspec}`)
+            }
+            return nodes[0]
+        })
+    )
+
+export const fetchMostActiveFiles2 = (args: {
+    repo: Scalars['String']
+    revspec: Scalars['String']
+    beforespec: Scalars['String']
+    filePath: Scalars['String']
+}): Observable<FileActivity[]> =>
+    fetchCommit({
+        repo: args.repo,
+        revspec: args.revspec,
+        beforespec: null,
+    }).pipe(
+        switchMap(headCommit => {
+            const headDate = new Date(Date.parse(headCommit.author.date))
+            const absBeforespec = `${headDate.getUTCFullYear()}-${
+                headDate.getUTCMonth() + 1
+            }-${headDate.getUTCDate()} ${args.beforespec}`
+            return fetchCommit({
+                repo: args.repo,
+                revspec: args.revspec,
+                beforespec: absBeforespec,
+            })
+        }),
+        switchMap(base =>
+            requestGraphQL<DiffSinceResult, DiffSinceVariables>(
+                gql`
+                    query DiffSince($repo: String!, $basespec: String!, $headspec: String!, $filePaths: [String!]!) {
+                        repository(name: $repo) {
+                            comparison(base: $basespec, head: $headspec) {
+                                fileDiffs(paths: $filePaths) {
+                                    nodes {
+                                        newPath
+                                        stat {
+                                            added
+                                            deleted
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                `,
+                {
+                    repo: args.repo,
+                    basespec: base.oid,
+                    headspec: args.revspec,
+                    filePaths: [args.filePath || '.'],
+                }
+            )
+        ),
+        map(dataOrThrowErrors),
+        map(data => {
+            const nodes = data.repository?.comparison.fileDiffs.nodes || []
+            const transformed: { path: string; added: number; deleted: number }[] = []
+            for (const node of nodes) {
+                if (!node.newPath) {
+                    continue
+                }
+                transformed.push({
+                    path: node.newPath,
+                    ...node.stat,
+                })
+            }
+            return transformed
+        })
+    )
 
 export const fetchMostActiveFiles = (args: {
     repo: Scalars['String']
@@ -244,10 +351,6 @@ export const fetchMostActiveFiles = (args: {
             }
             top10.sort((a, b) => b.added + b.deleted - (a.added + a.deleted))
 
-            console.log('### top10', top10)
-            console.log('### dirActivity', dirActivity)
-            console.log('### dirActivityArray', dirActivityArray)
-
             return {
                 dirActivity: dirActivityArray,
                 top10Files: top10,
@@ -363,6 +466,95 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
 }) => {
     const [showOlderCommits, setShowOlderCommits] = useState(false)
 
+    const [readmeInfo, setReadmeInfo] = useState<
+        | undefined
+        | {
+              blob: BlobFileFields
+              entry: TreeFields['entries'][number]
+          }
+    >()
+    useEffect(() => {
+        const readmeEntry = (() => {
+            for (const readmeName of ['README.md', 'README']) {
+                for (const entry of tree.entries) {
+                    if (!entry.isDirectory && entry.name === readmeName) {
+                        return entry
+                    }
+                }
+            }
+            return null
+        })()
+        if (!readmeEntry) {
+            return
+        }
+
+        const subscription = fetchBlob({
+            repoName: repo.name,
+            revision,
+            filePath: readmeEntry?.path,
+            disableTimeout: true,
+        }).subscribe(blob => {
+            if (blob) {
+                setReadmeInfo({
+                    blob,
+                    entry: readmeEntry,
+                })
+            }
+        })
+        return () => subscription.unsubscribe()
+    }, [repo.name, revision, tree.entries])
+
+    const [entries, setEntries] = useState<undefined | FilePanelProps['entries']>()
+    useEffect(() => {
+        const subscription = fetchMostActiveFiles2({
+            repo: repo.name,
+            revspec: revision,
+            beforespec: '1 month',
+            filePath,
+        }).subscribe(fileActivities => {
+            // TODO
+            console.log('### fileActivities', fileActivities)
+        })
+        return () => subscription.unsubscribe()
+    }, [repo.name, revision, filePath])
+
+    // const { blob, entry } =
+    //     useObservable<{
+    //         blob?: any
+    //         entry?: any
+    //     }>(
+    //         useMemo(() => {
+    //             const readmeEntry = (() => {
+    //                 for (const readmeName of ['README.md', 'README']) {
+    //                     for (const entry of tree.entries) {
+    //                         if (!entry.isDirectory && entry.name === readmeName) {
+    //                             return entry
+    //                         }
+    //                     }
+    //                 }
+    //                 return null
+    //             })()
+
+    //             if (!readmeEntry) {
+    //                 return of({})
+    //             }
+
+    //             return fetchBlob({
+    //                 repoName: repo.name,
+    //                 revision,
+    //                 filePath: readmeEntry?.path,
+    //                 disableTimeout: true,
+    //             }).pipe(
+    //                 map(blob => ({
+    //                     blob,
+    //                     entry: readmeEntry,
+    //                 }))
+    //             )
+    //         }, [repo.name, revision, tree.entries])
+    //     ) || {}
+
+    // ==============
+
     const fileDecorationsByPath =
         useObservable<FileDecorationsByPath>(
             useMemo(
@@ -456,38 +648,34 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
 
     const { extensionsController } = props
 
-    const richHTMLResults = useObservable(
-        useMemo(
-            () =>
-                fetchBlob({
-                    repoName: repo.name,
-                    revision,
-                    filePath: `${filePath}/README.md`,
-                    disableTimeout: true,
-                }),
-            [repo.name, revision, filePath]
-        )
-    )
+    // const richHTMLResults = useObservable(
+    //     useMemo(
+    //         () =>
+    //             fetchBlob({
+    //                 repoName: repo.name,
+    //                 revision,
+    //                 filePath: `${filePath}/README.md`,
+    //                 disableTimeout: true,
+    //             }),
+    //         [repo.name, revision, filePath]
+    //     )
+    // )
 
-    const richHTML = richHTMLResults?.richHTML
+    // const richHTML = richHTMLResults?.richHTML
+    // // richHTMLResults?.externalURLs
+    // const url = tree.url // TODO
+
+    // the URL for the file with path ${filePath}/README.md
 
     return (
         <>
             <div>
-                {' '}
-                {/* TODO: factor this out into MarkdownPreview component */}
-                {richHTML && richHTML !== 'loading' && (
-                    <ReadmePreviewCard readmeHTML={richHTML} location={props.location} />
-                    //
-                    // <div
-                    //     style={{
-                    //         maxHeight: '30rem',
-                    //         overflow: 'hidden',
-                    //         position: 'relative',
-                    //     }}
-                    // >
-                    //     <RenderedFile className="pt-0 pl-3" dangerousInnerHTML={richHTML} location={props.location} />
-                    // </div>
+                {readmeInfo && (
+                    <ReadmePreviewCard
+                        readmeHTML={readmeInfo.blob.richHTML}
+                        readmeURL={readmeInfo.entry.url}
+                        location={props.location}
+                    />
                 )}
             </div>
             {/* <div className="px-3 pb-3">
@@ -496,7 +684,7 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
             <section className={classNames('test-tree-entries mb-3 container', styles.section)}>
                 <div className="row">
                     <div className="col-6">
-                        <FilePanel tree={tree} />
+                        <FilesCard entries={tree.entries} />
                         {fileActivity?.top10Files && (
                             <Card className="card">
                                 <CardHeader>Most active</CardHeader>

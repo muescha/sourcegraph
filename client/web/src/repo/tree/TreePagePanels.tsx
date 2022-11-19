@@ -40,10 +40,15 @@ import { LinkOrSpan } from '@sourcegraph/shared/src/components/LinkOrSpan'
 
 interface ReadmePreviewCardProps {
     readmeHTML: string
+    readmeURL: string
     location: H.Location
 }
 
-export const ReadmePreviewCard: React.FunctionComponent<ReadmePreviewCardProps> = ({ readmeHTML, location }) => {
+export const ReadmePreviewCard: React.FunctionComponent<ReadmePreviewCardProps> = ({
+    readmeHTML,
+    readmeURL,
+    location,
+}) => {
     const fileRef = useRef<HTMLDivElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const isCutoff =
@@ -51,26 +56,35 @@ export const ReadmePreviewCard: React.FunctionComponent<ReadmePreviewCardProps> 
         containerRef.current &&
         fileRef.current.clientHeight > 0 &&
         containerRef.current.clientHeight < fileRef.current.clientHeight
-    console.log('# fileRef.current.clientHeight', fileRef.current?.clientHeight)
-    console.log('# containerRef.current.clientHeight', containerRef.current?.clientHeight)
-    console.log('# isCutoff', isCutoff)
     return (
-        <div className={classNames(styles.readmeContainer, 'pt-0 pl-3')} ref={containerRef}>
-            <RenderedFile ref={fileRef} dangerousInnerHTML={readmeHTML} location={location} />
-            {isCutoff && <div className={classNames('pb-0 pt-3 pl-3', styles.readmeMore)}>More...</div>}
-        </div>
+        <>
+            <div className={classNames(styles.readmeContainer)} ref={containerRef}>
+                <div ref={fileRef}>
+                    <RenderedFile className={styles.readme} dangerousInnerHTML={readmeHTML} location={location} />
+                </div>
+                {isCutoff && <div className={classNames(styles.readmeFader)} />}
+            </div>
+            {isCutoff && (
+                <div className={styles.readmeMore}>
+                    <Link to={readmeURL}>More...</Link>
+                </div>
+            )}
+        </>
     )
 }
 
-interface FilePanelProps {
-    tree: TreeFields
+export interface FilePanelProps {
+    entries: (TreeFields['entries'][number] & {
+        added?: number
+        removed?: number
+    })[]
 }
 
 // TODO(beyang): add back in renderedFileDecorations
-export const FilePanel: React.FunctionComponent<React.PropsWithChildren<FilePanelProps>> = ({ tree }) => (
+export const FilesCard: React.FunctionComponent<React.PropsWithChildren<FilePanelProps>> = ({ entries }) => (
     <Card className="card">
         <CardHeader>Files</CardHeader>
-        {tree.entries.map(entry => (
+        {entries.map(entry => (
             <div key={entry.name} className="list-group list-group-flush px-2 py-1 border-bottom">
                 <LinkOrSpan
                     to={entry.url}
