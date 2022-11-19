@@ -74,18 +74,27 @@ export const ReadmePreviewCard: React.FunctionComponent<ReadmePreviewCardProps> 
 }
 
 export interface FilePanelProps {
+    maxLinesChanged: number
     entries: (TreeFields['entries'][number] & {
-        added?: number
-        removed?: number
+        stats?: {
+            added: number
+            deleted: number
+        }
     })[]
 }
 
 // TODO(beyang): add back in renderedFileDecorations
-export const FilesCard: React.FunctionComponent<React.PropsWithChildren<FilePanelProps>> = ({ entries }) => (
+export const FilesCard: React.FunctionComponent<React.PropsWithChildren<FilePanelProps>> = ({
+    entries,
+    maxLinesChanged,
+}) => (
     <Card className="card">
         <CardHeader>Files</CardHeader>
         {entries.map(entry => (
-            <div key={entry.name} className="list-group list-group-flush px-2 py-1 border-bottom">
+            <div
+                key={`${entry.name}${entry.stats && '-with-stats'}`}
+                className="list-group list-group-flush px-2 py-1 border-bottom"
+            >
                 <LinkOrSpan
                     to={entry.url}
                     className={classNames(
@@ -113,7 +122,27 @@ export const FilesCard: React.FunctionComponent<React.PropsWithChildren<FilePane
                         </span>
                     </div>
                 </LinkOrSpan>
+                <span>{entry.stats && `+${entry.stats?.added}, -${entry.stats?.deleted}`}</span>
+                {entry.stats && <DiffMeter {...entry.stats} totalWidth={maxLinesChanged} />}
             </div>
         ))}
     </Card>
+)
+export const DiffMeter: React.FunctionComponent<{
+    added: number
+    deleted: number
+    totalWidth: number
+}> = ({ added, deleted, totalWidth }) => (
+    <div className={styles.diffMeter}>
+        <div
+            className={classNames(styles.diffMeterBar, styles.diffMeterDeleted)}
+            // eslint-disable-next-line react/forbid-dom-props
+            style={{ width: `${(100 * deleted) / totalWidth}%` }}
+        />
+        <div
+            className={classNames(styles.diffMeterBar, styles.diffMeterAdded)}
+            // eslint-disable-next-line react/forbid-dom-props
+            style={{ width: `${(100 * added) / totalWidth}%` }}
+        />
+    </div>
 )

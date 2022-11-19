@@ -89,3 +89,17 @@
     margin-left: 1rem;
     margin-bottom: 1rem;
 }
+
+.diff-meter {
+    height: 1rem;
+}
+.diff-meter-bar {
+    height: 100%;
+    display: 'inline-block';
+}
+.diff-meter-added {
+    background-color: green;
+}
+.diff-meter-deleted {
+    background-color: red;
+}

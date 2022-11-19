@@ -504,56 +504,53 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
         return () => subscription.unsubscribe()
     }, [repo.name, revision, tree.entries])
 
-    const [entries, setEntries] = useState<undefined | FilePanelProps['entries']>()
+    const [fileInfo, setFileInfo] = useState<
+        | undefined
+        | {
+              maxLinesChanged: number
+              entries: FilePanelProps['entries']
+          }
+    >()
+    console.log('### fileInfo', fileInfo)
     useEffect(() => {
         const subscription = fetchMostActiveFiles2({
             repo: repo.name,
             revspec: revision,
             beforespec: '1 month',
             filePath,
-        }).subscribe(fileActivities => {
-            // TODO
-            console.log('### fileActivities', fileActivities)
+        }).subscribe(diffs => {
+            const dirActivity = new Map<string, { name: string; added: number; deleted: number }>()
+            for (const fileDiffStat of diffs) {
+                const strippedPath = fileDiffStat.path.slice(filePath.length)
+                let subdirName = strippedPath
+                if (subdirName.includes('/')) {
+                    subdirName = subdirName.slice(0, subdirName.indexOf('/'))
+                }
+                if (!dirActivity.has(subdirName)) {
+                    dirActivity.set(subdirName, { name: subdirName, added: 0, deleted: 0 })
+                }
+                dirActivity.get(subdirName)!.added += fileDiffStat.added
+                dirActivity.get(subdirName)!.deleted += fileDiffStat.deleted
+            }
+
+            setFileInfo({
+                maxLinesChanged: Math.max(
+                    1,
+                    ...Array.from(dirActivity.values()).map(activity => activity.added + activity.deleted)
+                ),
+                entries: tree.entries.map(entry => ({
+                    ...entry,
+                    stats: dirActivity.has(entry.name)
+                        ? {
+                              added: dirActivity.get(entry.name)!.added,
+                              deleted: dirActivity.get(entry.name)!.deleted,
+                          }
+                        : undefined,
+                })),
+            })
         })
         return () => subscription.unsubscribe()
-    }, [repo.name, revision, filePath])
-
-    // const { blob, entry } =
-    //     useObservable<{
-    //         blob?: any
-    //         entry?: any
-    //     }>(
-    //         useMemo(() => {
-    //             const readmeEntry = (() => {
-    //                 for (const readmeName of ['README.md', 'README']) {
-    //                     for (const entry of tree.entries) {
-    //                         if (!entry.isDirectory && entry.name === readmeName) {
-    //                             return entry
-    //                         }
-    //                     }
-    //                 }
-    //                 return null
-    //             })()
-
-    //             if (!readmeEntry) {
-    //                 return of({})
-    //             }
-
-    //             return fetchBlob({
-    //                 repoName: repo.name,
-    //                 revision,
-    //                 filePath: readmeEntry?.path,
-    //                 disableTimeout: true,
-    //             }).pipe(
-    //                 map(blob => ({
-    //                     blob,
-    //                     entry: readmeEntry,
-    //                 }))
-    //             )
-    //         }, [repo.name, revision, tree.entries])
-    //     ) || {}
-
-    // ==============
+    }, [repo.name, revision, filePath, tree.entries])
 
     const fileDecorationsByPath =
         useObservable<FileDecorationsByPath>(
@@ -648,25 +645,6 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
 
     const { extensionsController } = props
 
-    // const richHTMLResults = useObservable(
-    //     useMemo(
-    //         () =>
-    //             fetchBlob({
-    //                 repoName: repo.name,
-    //                 revision,
-    //                 filePath: `${filePath}/README.md`,
-    //                 disableTimeout: true,
-    //             }),
-    //         [repo.name, revision, filePath]
-    //     )
-    // )
-
-    // const richHTML = richHTMLResults?.richHTML
-    // // richHTMLResults?.externalURLs
-    // const url = tree.url // TODO
-
-    // the URL for the file with path ${filePath}/README.md
-
     return (
         <>
             <div>
@@ -678,13 +656,10 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
                     />
                 )}
             </div>
-            {/* <div className="px-3 pb-3">
-                <Link to="TODO">More...</Link>
-            </div> */}
             <section className={classNames('test-tree-entries mb-3 container', styles.section)}>
                 <div className="row">
                     <div className="col-6">
-                        <FilesCard entries={tree.entries} />
+                        <FilesCard entries={fileInfo?.entries || tree.entries} />
                         {fileActivity?.top10Files && (
                             <Card className="card">
                                 <CardHeader>Most active</CardHeader>
