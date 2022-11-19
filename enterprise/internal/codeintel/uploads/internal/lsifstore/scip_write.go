@@ -1,10 +1,7 @@
 package lsifstore
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
-	"io"
 	"sync/atomic"
 
 	"github.com/keegancsmith/sqlf"
@@ -12,7 +9,6 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/database/basestore"
 	"github.com/sourcegraph/sourcegraph/internal/database/batch"
 	"github.com/sourcegraph/sourcegraph/lib/codeintel/lsif/conversion"
-	"github.com/sourcegraph/sourcegraph/lib/errors"
 )
 
 func (s *store) InsertSCIPDocument(ctx context.Context, uploadID int, documentPath string, hash []byte, rawSCIPPayload []byte) (int, error) {
@@ -157,75 +153,3 @@ SELECT
 FROM t_codeintel_scip_symbols source
 ON CONFLICT DO NOTHING
 `
-
-func encodeRanges(vs []int32) (buf []byte, _ error) {
-	n := len(vs)
-
-	if n == 0 {
-		return nil, nil
-	}
-	if n%4 != 0 {
-		return nil, errors.Newf("unexpected range length - have %d but expected a multiple of 4", n)
-	}
-
-	last := int32(0)
-	for i := 0; i < n; i += 2 {
-		v := vs[i]
-		buf = binary.AppendVarint(buf, int64(v-last))
-		last = v
-	}
-
-	last = 0
-	for i := 1; i < n; i += 2 {
-		v := vs[i]
-		buf = binary.AppendVarint(buf, int64(v-last))
-		last = v
-	}
-
-	return buf, nil
-}
-
-func decodeRanges(encoded []byte) ([]int32, error) {
-	if len(encoded) == 0 {
-		return nil, nil
-	}
-
-	return decodeRangesFromReader(bytes.NewReader(encoded))
-}
-
-func decodeRangesFromReader(r io.ByteReader) ([]int32, error) {
-	splitDeltas := []int32{}
-	for {
-		v, err := binary.ReadVarint(r)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return nil, err
-		}
-
-		splitDeltas = append(splitDeltas, int32(v))
-	}
-
-	n := len(splitDeltas)
-	h := n / 2
-
-	if n%4 != 0 {
-		return nil, errors.Newf("unexpected number of encoded deltas - have %d but expected a multiple of 4", n)
-	}
-
-	lastLine := int32(0)
-	lastChar := int32(0)
-	lineDeltas := splitDeltas[:h]
-	charDeltas := splitDeltas[h:]
-
-	combined := make([]int32, 0, n)
-	for i := 0; i < h; i++ {
-		lastLine = lineDeltas[i] + lastLine
-		lastChar = charDeltas[i] + lastChar
-		combined = append(combined, lastLine, lastChar)
-	}
-
-	return combined, nil
-}
