@@ -566,6 +566,8 @@ export const TreePageContent: React.FunctionComponent<React.PropsWithChildren<Tr
             )
         ) ?? {}
 
+    console.log('# fileDecorationsByPath', fileDecorationsByPath)
+
     const treeStats = useObservable(
         useMemo(() => fetchTreeStats({ repo: repo.name, revspec: revision, filePath }), [repo.name, revision, filePath])
     )

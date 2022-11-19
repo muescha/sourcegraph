@@ -141,7 +141,6 @@ export const DiffMeter: React.FunctionComponent<{
         <div
             // eslint-disable-next-line react/forbid-dom-props
             style={{
-                height: '100%',
                 display: 'inline-block',
                 width: `${(100 * added) / totalWidth}%`,
             }}
@@ -150,7 +149,6 @@ export const DiffMeter: React.FunctionComponent<{
         <div
             // eslint-disable-next-line react/forbid-dom-props
             style={{
-                height: '100%',
                 display: 'inline-block',
                 width: `${(100 * deleted) / totalWidth}%`,
             }}
