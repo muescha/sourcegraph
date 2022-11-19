@@ -19,7 +19,7 @@ RUN ls '/generated/prometheus'
 
 # Prepare final image
 # hadolint ignore=DL3007
-FROM quay.io/prometheus/busybox-linux-amd64:latest
+FROM quay.io/prometheus/busybox-linux-amd64:latest@sha256:dca9fb7b1ee7f3ff8707b8169358768768c48cc27ea057b1b221ab76623c1cf5
 
 # Should reflect versions above
 LABEL com.sourcegraph.prometheus.version=v2.38.0
