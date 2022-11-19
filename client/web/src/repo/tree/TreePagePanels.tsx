@@ -138,21 +138,25 @@ export const DiffMeter: React.FunctionComponent<{
     totalWidth: number
 }> = ({ added, deleted, totalWidth }) => (
     <div title={`${formatNumber(added)} lines added, -${formatNumber(deleted)} deleted`} className={styles.diffMeter}>
-        <div
-            // eslint-disable-next-line react/forbid-dom-props
-            style={{
-                display: 'inline-block',
-                width: `${(100 * added) / totalWidth}%`,
-            }}
-            className={classNames(styles.diffMeterBar, styles.diffMeterAdded)}
-        />
-        <div
-            // eslint-disable-next-line react/forbid-dom-props
-            style={{
-                display: 'inline-block',
-                width: `${(100 * deleted) / totalWidth}%`,
-            }}
-            className={classNames(styles.diffMeterBar, styles.diffMeterDeleted)}
-        />
+        {added > 0 && (
+            <div
+                // eslint-disable-next-line react/forbid-dom-props
+                style={{
+                    display: 'inline-block',
+                    width: `${Math.max(2, (100 * added) / totalWidth)}%`,
+                }}
+                className={classNames(styles.diffMeterBar, styles.diffMeterAdded)}
+            />
+        )}
+        {deleted > 0 && (
+            <div
+                // eslint-disable-next-line react/forbid-dom-props
+                style={{
+                    display: 'inline-block',
+                    width: `${Math.max(2, (100 * deleted) / totalWidth)}%`,
+                }}
+                className={classNames(styles.diffMeterBar, styles.diffMeterDeleted)}
+            />
+        )}
     </div>
 )
