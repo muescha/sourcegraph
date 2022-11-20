@@ -96,7 +96,13 @@ func canonicalizeDocument(document *scip.Document) {
 }
 
 func extractSymbols(document *scip.Document) []ProcessedSymbolData {
-	symbolsByName := make(map[string]ProcessedSymbolData, len(document.Occurrences))
+	type rangeSets struct {
+		definitionRanges     []*scip.Range
+		referenceRanges      []*scip.Range
+		implementationRanges []*scip.Range
+		typeDefinitionRanges []*scip.Range
+	}
+	symbolsByName := make(map[string]rangeSets, len(document.Occurrences))
 	for _, occurrence := range document.Occurrences {
 		if occurrence.Symbol == "" {
 			continue
@@ -104,21 +110,27 @@ func extractSymbols(document *scip.Document) []ProcessedSymbolData {
 
 		symbol, ok := symbolsByName[occurrence.Symbol]
 		if !ok {
-			symbolsByName[occurrence.Symbol] = ProcessedSymbolData{SymbolName: occurrence.Symbol}
+			symbolsByName[occurrence.Symbol] = rangeSets{}
 		}
 
 		if occurrence.SymbolRoles&int32(scip.SymbolRole_Definition) != 0 {
-			symbol.DefinitionRanges = addRange(symbol.DefinitionRanges, occurrence.Range)
+			symbol.definitionRanges = append(symbol.definitionRanges, scip.NewRange(occurrence.Range))
 		} else {
-			symbol.ReferenceRanges = addRange(symbol.ReferenceRanges, occurrence.Range)
+			symbol.referenceRanges = append(symbol.referenceRanges, scip.NewRange(occurrence.Range))
 		}
 
 		symbolsByName[occurrence.Symbol] = symbol
 	}
 
 	symbols := make([]ProcessedSymbolData, 0, len(symbolsByName))
-	for _, symbol := range symbolsByName {
-		symbols = append(symbols, symbol)
+	for name, symbol := range symbolsByName {
+		symbols = append(symbols, ProcessedSymbolData{
+			SymbolName:           name,
+			DefinitionRanges:     collapseRanges(symbol.definitionRanges),
+			ReferenceRanges:      collapseRanges(symbol.referenceRanges),
+			ImplementationRanges: collapseRanges(symbol.implementationRanges),
+			TypeDefinitionRanges: collapseRanges(symbol.typeDefinitionRanges),
+		})
 	}
 	sort.Slice(symbols, func(i, j int) bool {
 		return symbols[i].SymbolName < symbols[j].SymbolName
@@ -127,7 +139,12 @@ func extractSymbols(document *scip.Document) []ProcessedSymbolData {
 	return symbols
 }
 
-func addRange(s []int32, compactRange []int32) []int32 {
-	fullRange := scip.NewRange(compactRange)
-	return append(s, fullRange.Start.Line, fullRange.Start.Character, fullRange.End.Line, fullRange.End.Character)
+func collapseRanges(ranges []*scip.Range) []int32 {
+	if len(ranges) == 0 {
+		return nil
+	}
+
+	// TODO
+	precise.SortRanges(ranges)
+	return nil
 }

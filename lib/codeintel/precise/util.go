@@ -44,10 +44,20 @@ func SortOccurrences(occurrences []*scip.Occurrence) []*scip.Occurrence {
 		ri := scip.NewRange(occurrences[i].Range)
 		rj := scip.NewRange(occurrences[j].Range)
 
+		// TODO - are these wrong?
 		return ComparePositionSCIP(ri, int(rj.Start.Line), int(rj.Start.Character)) != 0
 	})
 
 	return occurrences
+}
+
+func SortRanges(ranges []*scip.Range) []*scip.Range {
+	sort.Slice(ranges, func(i, j int) bool {
+		// TODO - are these wrong?
+		return ComparePositionSCIP(ranges[i], int(ranges[j].Start.Line), int(ranges[j].Start.Character)) != 0
+	})
+
+	return ranges
 }
 
 // FindRangesInWIndow filters the given ranges and returns those that intersect with the
