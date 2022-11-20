@@ -1,9 +1,10 @@
-import { EditorSelection, Extension, Facet, Line, SelectionRange, StateEffect, StateField } from '@codemirror/state'
-import { EditorView, keymap } from '@codemirror/view'
+import { countColumn, EditorSelection, Extension, Facet, Line, SelectionRange } from '@codemirror/state'
+import { EditorView, hoverTooltip, KeyBinding, keymap, TooltipView } from '@codemirror/view'
 import { Remote } from 'comlink'
 import * as H from 'history'
 
 import { TextDocumentPositionParameters } from '@sourcegraph/client-api'
+import { renderMarkdown } from '@sourcegraph/common'
 import { wrapRemoteObservable } from '@sourcegraph/shared/src/api/client/api/common'
 import { FlatExtensionHostAPI } from '@sourcegraph/shared/src/api/contract'
 import { Occurrence, Position, Range } from '@sourcegraph/shared/src/codeintel/scip'
@@ -37,7 +38,12 @@ function occurrenceAtPosition(
     return
 }
 
-function closestOccurrence(line: number, table: HighlightIndex, position: Position): Occurrence | undefined {
+function closestOccurrence(
+    line: number,
+    table: HighlightIndex,
+    position: Position,
+    includeOccurrence?: (occurrence: Occurrence) => boolean
+): Occurrence | undefined {
     const candidates: [Occurrence, number][] = []
     let index = table.lineIndex[line] ?? -1
     for (
@@ -47,6 +53,9 @@ function closestOccurrence(line: number, table: HighlightIndex, position: Positi
     ) {
         const occurrence = table.occurrences[index]
         if (!isInteractiveOccurrence(occurrence)) {
+            continue
+        }
+        if (includeOccurrence && !includeOccurrence(occurrence)) {
             continue
         }
         candidates.push([occurrence, occurrence.range.characterDistance(position)])
@@ -77,7 +86,6 @@ function goToDefinitionAtOccurrence(
     view: EditorView,
     blobInfo: BlobInfo,
     history: H.History,
-    selections: Map<string, Range>,
     codeintel: Remote<FlatExtensionHostAPI>,
     position: Position,
     occurrence: Occurrence,
@@ -91,7 +99,7 @@ function goToDefinitionAtOccurrence(
         return fromCache
     }
     const uri = toURIWithPath(blobInfo)
-    const promise = goToDefinition(view, history, selections, codeintel, { position, textDocument: { uri } }, coords)
+    const promise = goToDefinition(view, history, codeintel, { position, textDocument: { uri } }, coords)
     definitionCache.set(occurrence, promise)
     return promise
 }
@@ -101,7 +109,6 @@ function goToDefinitionAtEvent(
     event: MouseEvent,
     blobInfo: BlobInfo,
     history: H.History,
-    selections: Map<string, Range>,
     codeintel: Remote<FlatExtensionHostAPI>
 ): Promise<() => void> {
     const atEvent = occurrenceAtEvent(view, event)
@@ -109,7 +116,7 @@ function goToDefinitionAtEvent(
         return Promise.resolve(() => {})
     }
     const { occurrence, position, coords } = atEvent
-    return goToDefinitionAtOccurrence(view, blobInfo, history, selections, codeintel, position, occurrence, coords)
+    return goToDefinitionAtOccurrence(view, blobInfo, history, codeintel, position, occurrence, coords)
 }
 
 function positionAtEvent(view: EditorView, event: MouseEvent): { position: Position; coords: Coordinates } | undefined {
@@ -164,7 +171,7 @@ export const rangeToSelection = (view: EditorView, range: Range): SelectionRange
     const startLine = view.state.doc.line(range.start.line + 1)
     const endLine = view.state.doc.line(range.end.line + 1)
     const start = startLine.from + range.start.character
-    const end = endLine.from + range.end.character
+    const end = Math.min(endLine.from + range.end.character, endLine.to)
     return EditorSelection.range(start, end)
 }
 export const uriFacet = Facet.define<string, string>({
@@ -198,146 +205,186 @@ export function contextMenu(
     document.addEventListener('keydown', globalEventHandler)
     document.removeEventListener('keyup', globalEventHandler)
     document.addEventListener('keyup', globalEventHandler)
+    const hover: Extension = hoverTooltip(
+        async (view, pos) => {
+            if (!codeintel) {
+                return null
+            }
+            const line = view.state.doc.lineAt(pos)
+            const character = countColumn(line.text, 1, pos - line.from) - 1
+            const uri = toURIWithPath(blobInfo)
+            const hover = await codeintel.getHover({
+                position: { line: line.number - 1, character },
+                textDocument: { uri },
+            })
 
+            const result = await wrapRemoteObservable(hover).toPromise()
+            if (result.isLoading || result.result === null) {
+                return null
+            }
+            const contents = result.result.contents
+                .map(({ value }) => value)
+                .join('\n\n----\n\n')
+                .trimEnd()
+            return {
+                pos,
+                end: pos,
+                create(): TooltipView {
+                    const dom = document.createElement('div')
+                    const markdown = renderMarkdown(contents)
+                    dom.innerHTML = markdown
+                    return { dom }
+                },
+            }
+        },
+        {
+            hoverTime: 100,
+            // Hiding the tooltip when the document changes replicates
+            // Monaco's behavior and also "feels right" because it removes
+            // "clutter" from the input.
+            hideOnChange: true,
+        }
+    )
+
+    const keybindings: readonly KeyBinding[] = [
+        {
+            key: 'Space',
+            run() {
+                if (!codeintel) {
+                    return false
+                }
+                return true
+            },
+        },
+        {
+            key: 'Enter',
+            run(view) {
+                if (!codeintel) {
+                    return false
+                }
+                const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                const atEvent = occurrenceAtPosition(view, position)
+                if (!atEvent) {
+                    return false
+                }
+                const { occurrence } = atEvent
+                const cmLine = view.state.doc.line(occurrence.range.start.line + 1)
+                const cmPos = cmLine.from + occurrence.range.start.character
+                const rect = view.coordsAtPos(cmPos)
+                const coords: Coordinates = rect ? { x: rect.left, y: rect.top } : { x: 0, y: 0 }
+                const spinner = new Spinner(coords)
+                goToDefinitionAtOccurrence(view, blobInfo, history, codeintel, position, occurrence, coords)
+                    .then(
+                        action => action(),
+                        () => {}
+                    )
+                    .finally(() => spinner.stop())
+                return true
+            },
+        },
+        {
+            key: 'Mod-ArrowRight',
+            run() {
+                history.goForward()
+                return true
+            },
+        },
+        {
+            key: 'Mod-ArrowLeft',
+            run() {
+                history.goBack()
+                return true
+            },
+        },
+        {
+            key: 'ArrowLeft',
+            run(view) {
+                const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                const table = view.state.facet(syntaxHighlight)
+                const line = position.line
+                const occurrence = closestOccurrence(line, table, position, occurrence =>
+                    occurrence.range.start.isSmaller(position)
+                )
+                if (occurrence) {
+                    selectRange(view, occurrence.range)
+                }
+                return true
+            },
+        },
+        {
+            key: 'ArrowRight',
+            run(view) {
+                const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                const table = view.state.facet(syntaxHighlight)
+                const line = position.line
+                const occurrence = closestOccurrence(line, table, position, occurrence =>
+                    occurrence.range.start.isGreater(position)
+                )
+                if (occurrence) {
+                    selectRange(view, occurrence.range)
+                }
+                return true
+            },
+        },
+        {
+            key: 'ArrowDown',
+            run(view) {
+                const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                const table = view.state.facet(syntaxHighlight)
+                for (let line = position.line + 1; line < table.lineIndex.length; line++) {
+                    const occurrence = closestOccurrence(line, table, position)
+                    if (occurrence) {
+                        selectRange(view, occurrence.range)
+                        return true
+                    }
+                }
+                return true
+            },
+        },
+        {
+            key: 'ArrowUp',
+            run(view) {
+                const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
+                const table = view.state.facet(syntaxHighlight)
+                for (let line = position.line - 1; line >= 0; line--) {
+                    const occurrence = closestOccurrence(line, table, position)
+                    if (occurrence) {
+                        selectRange(view, occurrence.range)
+                        return true
+                    }
+                }
+                return true
+            },
+        },
+        {
+            key: 'Escape',
+            run(view) {
+                view.contentDOM.blur()
+                return true
+            },
+        },
+    ]
     return [
+        hover,
         uriFacet.of(toURIWithPath(blobInfo)),
         selectionsFacet.of(selections),
-        keymap.of([
-            {
-                key: 'Space',
-                run() {
-                    return true
-                },
-            },
-            {
-                key: 'Enter',
-                run(view) {
-                    if (!codeintel) {
-                        return false
-                    }
-                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
-                    const atEvent = occurrenceAtPosition(view, position)
-                    if (!atEvent) {
-                        return false
-                    }
-                    const { occurrence } = atEvent
-                    const cmLine = view.state.doc.line(occurrence.range.start.line + 1)
-                    const cmPos = cmLine.from + occurrence.range.start.character
-                    const rect = view.coordsAtPos(cmPos)
-                    const coords: Coordinates = rect ? { x: rect.left, y: rect.top } : { x: 0, y: 0 }
-                    const spinner = new Spinner(coords)
-                    goToDefinitionAtOccurrence(
-                        view,
-                        blobInfo,
-                        history,
-                        selections,
-                        codeintel,
-                        position,
-                        occurrence,
-                        coords
-                    )
-                        .then(
-                            action => action(),
-                            () => {}
-                        )
-                        .finally(() => spinner.stop())
-                    return true
-                },
-            },
-            {
-                key: 'Mod-ArrowRight',
-                run() {
-                    history.goForward()
-                    return true
-                },
-            },
-            {
-                key: 'Mod-ArrowLeft',
-                run() {
-                    history.goBack()
-                    return true
-                },
-            },
-            {
-                key: 'ArrowLeft',
-                run(view) {
-                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
-                    const table = view.state.facet(syntaxHighlight)
-                    const line = position.line
-                    let index = table.lineIndex[line + 1] ?? -1
-                    index-- // Start with the last occurrence of this line
-                    for (; index >= 0 && table.occurrences[index].range.start.line === line; index--) {
-                        const occurrence = table.occurrences[index]
-                        if (!isInteractiveOccurrence(occurrence)) {
-                            continue
-                        }
-                        if (occurrence.range.start.character >= position.character) {
-                            continue
-                        }
-                        selectRange(view, occurrence.range)
-                        return true
-                    }
-                    return true
-                },
-            },
-            {
-                key: 'ArrowRight',
-                run(view) {
-                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
-                    const table = view.state.facet(syntaxHighlight)
-                    const line = position.line
-                    let index = table.lineIndex[line] ?? -1
-                    for (
-                        ;
-                        index >= 0 &&
-                        index < table.occurrences.length &&
-                        table.occurrences[index].range.start.line === line;
-                        index++
-                    ) {
-                        const occurrence = table.occurrences[index]
-                        if (occurrence.range.start.character <= position.character) {
-                            continue
-                        }
-                        if (!isInteractiveOccurrence(occurrence)) {
-                            continue
-                        }
-                        selectRange(view, occurrence.range)
-                        return true
-                    }
-                    return true
-                },
-            },
-            {
-                key: 'ArrowDown',
-                run(view) {
-                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
-                    const table = view.state.facet(syntaxHighlight)
-                    for (let line = position.line + 1; line < table.lineIndex.length; line++) {
-                        const occurrence = closestOccurrence(line, table, position)
-                        if (occurrence) {
-                            selectRange(view, occurrence.range)
-                            return true
-                        }
-                    }
-                    return true
-                },
-            },
-            {
-                key: 'ArrowUp',
-                run(view) {
-                    const position = scipPositionAtCodemirrorPosition(view, view.state.selection.main.from)
-                    const table = view.state.facet(syntaxHighlight)
-                    for (let line = position.line - 1; line >= 0; line--) {
-                        const occurrence = closestOccurrence(line, table, position)
-                        if (occurrence) {
-                            selectRange(view, occurrence.range)
-                            return true
-                        }
-                    }
-                    return true
-                },
-            },
-        ]),
+        keymap.of(
+            keybindings.flatMap(keybinding => {
+                if (keybinding.key === 'ArrowUp') {
+                    return [keybinding, { ...keybinding, key: 'k' }]
+                }
+                if (keybinding.key === 'ArrowDown') {
+                    return [keybinding, { ...keybinding, key: 'j' }]
+                }
+                if (keybinding.key === 'ArrowLeft') {
+                    return [keybinding, { ...keybinding, key: 'h' }, { ...keybinding, key: 'Shift-Tab' }]
+                }
+                if (keybinding.key === 'ArrowRight') {
+                    return [keybinding, { ...keybinding, key: 'l' }, { ...keybinding, key: 'Tab' }]
+                }
+                return [keybinding]
+            })
+        ),
         EditorView.domEventHandlers({
             mouseover(event, view) {
                 globalViewHack = view
@@ -346,12 +393,28 @@ export function contextMenu(
                     return
                 }
                 // toggleClickableClass(view, event.metaKey)
-                goToDefinitionAtEvent(view, event, blobInfo, history, selections, codeintel).then(
+                goToDefinitionAtEvent(view, event, blobInfo, history, codeintel).then(
                     () => {},
                     () => {}
                 )
             },
+            dblclick(event, view) {
+                if (!codeintel) {
+                    return
+                }
+                const atEvent = positionAtEvent(view, event)
+                if (!atEvent) {
+                    return
+                }
+                const {
+                    position: { line },
+                } = atEvent
+                // Select the entire line
+                selectRange(view, Range.fromNumbers(line, 0, line, Number.MAX_VALUE))
+                return true
+            },
             click(event, view) {
+                console.log({ event })
                 if (!codeintel) {
                     return
                 }
@@ -366,7 +429,7 @@ export function contextMenu(
                     x: event.clientX,
                     y: event.clientY,
                 })
-                goToDefinitionAtEvent(view, event, blobInfo, history, selections, codeintel)
+                goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
                     .then(
                         action => action(),
                         () => {}
@@ -384,7 +447,11 @@ export function contextMenu(
                 if (!atEvent) {
                     return
                 }
-                const definitionAction = goToDefinitionAtEvent(view, event, blobInfo, history, selections, codeintel)
+                const atEvent2 = occurrenceAtEvent(view, event)
+                if (atEvent2 && isInteractiveOccurrence(atEvent2.occurrence)) {
+                    selectRange(view, atEvent2.occurrence.range)
+                }
+                const definitionAction = goToDefinitionAtEvent(view, event, blobInfo, history, codeintel)
                 const { coords } = atEvent
                 const menu = document.createElement('div')
                 const definition = document.createElement('div')
@@ -392,7 +459,8 @@ export function contextMenu(
                 definition.classList.add('codeintel-contextmenu-item')
                 definition.classList.add('codeintel-contextmenu-item-action')
 
-                definition.addEventListener('click', () => {
+                definition.addEventListener('click', event => {
+                    event.preventDefault()
                     const spinner = new Spinner(coords)
                     definitionAction
                         .then(
@@ -461,7 +529,6 @@ function showTooltip(view: EditorView, element: HTMLElement, coords: Coordinates
 async function goToDefinition(
     view: EditorView,
     history: H.History,
-    selections: Map<string, Range>,
     codeintel: Remote<FlatExtensionHostAPI>,
     params: TextDocumentPositionParameters,
     coords: Coordinates
@@ -518,6 +585,7 @@ async function goToDefinition(
                     range.end.line,
                     range.end.character
                 )
+                const selections = view.state.facet(selectionsFacet)
                 selections.set(location.uri, selectionRange)
                 if (location.uri === params.textDocument.uri) {
                     selectRange(view, selectionRange)
@@ -526,16 +594,8 @@ async function goToDefinition(
             }
         }
     }
-    // const uri = parseRepoURI(params.textDocument.uri)
-    // const href = toPrettyBlobURL({
-    //     repoName: uri.repoName,
-    //     revision: uri.revision,
-    //     filePath: uri.filePath || 'FIXME_THIS_IS_A_BUG',
-    //     position: { line: params.position.line + 1, character: params.position.character + 1 },
-    //     viewState: 'def',
-    // })
-    // TODO: something more useful than opening ref panel
     return () => {
+        // TODO: something more useful than opening ref panel
         const element = document.createElement('div')
         element.textContent = 'FIXME: Multiple definitions found'
         element.style.color = 'white'
