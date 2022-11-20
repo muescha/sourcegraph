@@ -144,7 +144,10 @@ func collapseRanges(ranges []*scip.Range) []int32 {
 		return nil
 	}
 
-	// TODO
-	precise.SortRanges(ranges)
-	return nil
+	rangeComponents := make([]int32, len(ranges)*4)
+	for _, r := range precise.SortRanges(ranges) {
+		rangeComponents = append(rangeComponents, r.Start.Line, r.Start.Character, r.End.Line, r.End.Character)
+	}
+
+	return rangeComponents
 }
